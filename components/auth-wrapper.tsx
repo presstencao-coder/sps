@@ -1,122 +1,115 @@
 "use client"
 
+import type React from "react"
 import { useState, useEffect } from "react"
 import { LoginForm } from "./login-form"
-import { RegisterForm } from "./register-form"
 import { TwoFactorAuth } from "./two-factor-auth"
-import MainLayout from "./main-layout"
-import { PasswordManager } from "./password-manager"
-import { ProfilePage } from "./profile-page"
-import { SettingsPage } from "./settings-page"
-import { toast } from "sonner"
+import { RegisterForm } from "./register-form"
 
-type AuthState = "login" | "register" | "2fa" | "authenticated"
-type Page = "passwords" | "profile" | "settings"
-
-interface User {
-  id: number
-  name: string
-  email: string
-  twoFactorEnabled: boolean
+interface AuthWrapperProps {
+  children: React.ReactNode
 }
 
-export function AuthWrapper() {
-  const [authState, setAuthState] = useState<AuthState>("login")
-  const [currentPage, setCurrentPage] = useState<Page>("passwords")
-  const [user, setUser] = useState<User | null>(null)
-  const [tempToken, setTempToken] = useState<string | null>(null)
+export function AuthWrapper({ children }: AuthWrapperProps) {
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [showTwoFactor, setShowTwoFactor] = useState(false)
+  const [showRegister, setShowRegister] = useState(false)
+  const [userToken, setUserToken] = useState("")
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
+    // Verificar se já está autenticado
     const token = localStorage.getItem("token")
     if (token) {
-      validateToken(token)
+      // Verificar se o token é válido
+      verifyToken(token)
+    } else {
+      setIsLoading(false)
     }
   }, [])
 
-  const validateToken = async (token: string) => {
+  const verifyToken = async (token: string) => {
     try {
-      const response = await fetch("/api/user/profile", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      })
+      // Decodificar o token para verificar se tem 2FA
+      const payload = JSON.parse(atob(token.split(".")[1]))
 
-      if (response.ok) {
-        const userData = await response.json()
-        setUser(userData)
-        setAuthState("authenticated")
+      if (payload.twoFactorVerified === true) {
+        setIsAuthenticated(true)
       } else {
-        localStorage.removeItem("token")
-        setAuthState("login")
+        // Token válido mas sem 2FA verificado
+        setUserToken(token)
+        setShowTwoFactor(true)
       }
     } catch (error) {
-      console.error("Token validation error:", error)
+      // Token inválido, remover
       localStorage.removeItem("token")
-      setAuthState("login")
+    } finally {
+      setIsLoading(false)
     }
   }
 
-  const handleLoginSuccess = (token: string, requiresTwoFactor: boolean, userData?: User) => {
-    if (requiresTwoFactor) {
-      setTempToken(token)
-      setAuthState("2fa")
-    } else {
-      localStorage.setItem("token", token)
-      if (userData) {
-        setUser(userData)
-      }
-      setAuthState("authenticated")
-      toast.success("Login realizado com sucesso!")
-    }
-  }
-
-  const handleRegisterSuccess = () => {
-    setAuthState("login")
-    toast.success("Conta criada com sucesso! Faça login para continuar.")
-  }
-
-  const handle2FASuccess = (token: string, userData: User) => {
+  const handleLoginSuccess = (token: string, requiresTwoFactor: boolean) => {
+    setUserToken(token)
     localStorage.setItem("token", token)
-    setUser(userData)
-    setTempToken(null)
-    setAuthState("authenticated")
-    toast.success("Autenticação de dois fatores concluída!")
+
+    if (requiresTwoFactor) {
+      setShowTwoFactor(true)
+    } else {
+      setIsAuthenticated(true)
+    }
+  }
+
+  const handleTwoFactorComplete = () => {
+    setShowTwoFactor(false)
+    setIsAuthenticated(true)
+  }
+
+  const handleRegisterSuccess = (token: string) => {
+    setUserToken(token)
+    localStorage.setItem("token", token)
+    setShowRegister(false)
+    setShowTwoFactor(true) // Sempre mostrar 2FA após registro
   }
 
   const handleLogout = () => {
     localStorage.removeItem("token")
-    setUser(null)
-    setTempToken(null)
-    setAuthState("login")
-    setCurrentPage("passwords")
-    toast.success("Logout realizado com sucesso!")
+    setIsAuthenticated(false)
+    setShowTwoFactor(false)
+    setShowRegister(false)
+    setUserToken("")
   }
 
-  const handleUserUpdate = (updatedUser: User) => {
-    setUser(updatedUser)
-  }
-
-  if (authState === "login") {
-    return <LoginForm onLoginSuccess={handleLoginSuccess} onSwitchToRegister={() => setAuthState("register")} />
-  }
-
-  if (authState === "register") {
-    return <RegisterForm onRegisterSuccess={handleRegisterSuccess} onSwitchToLogin={() => setAuthState("login")} />
-  }
-
-  if (authState === "2fa") {
-    return <TwoFactorAuth tempToken={tempToken} onSuccess={handle2FASuccess} onBack={() => setAuthState("login")} />
-  }
-
-  if (authState === "authenticated" && user) {
+  if (isLoading) {
     return (
-      <MainLayout currentPage={currentPage} onPageChange={setCurrentPage} onLogout={handleLogout} userInfo={user}>
-        {currentPage === "passwords" && <PasswordManager />}
-        {currentPage === "profile" && <ProfilePage user={user} onUserUpdate={handleUserUpdate} />}
-        {currentPage === "settings" && <SettingsPage user={user} onUserUpdate={handleUserUpdate} />}
-      </MainLayout>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
     )
   }
 
-  return null
+  if (!isAuthenticated) {
+    if (showTwoFactor) {
+      return <TwoFactorAuth onComplete={handleTwoFactorComplete} />
+    }
+
+    if (showRegister) {
+      return <RegisterForm onSuccess={handleRegisterSuccess} onBackToLogin={() => setShowRegister(false)} />
+    }
+
+    return <LoginForm onSuccess={handleLoginSuccess} onShowRegister={() => setShowRegister(true)} />
+  }
+
+  return (
+    <div>
+      <div className="flex justify-end mb-4">
+        <button
+          onClick={handleLogout}
+          className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+        >
+          Sair
+        </button>
+      </div>
+      {children}
+    </div>
+  )
 }

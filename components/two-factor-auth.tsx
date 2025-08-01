@@ -1,229 +1,294 @@
 "use client"
 
-import type React from "react"
-
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Shield, ArrowLeft, Loader2, Smartphone } from "lucide-react"
-import { toast } from "sonner"
+import { CheckCircle, Smartphone, Key, RefreshCw } from "lucide-react"
+import Image from "next/image"
 
 interface TwoFactorAuthProps {
-  tempToken: string | null
-  onSuccess: (token: string, userData: any) => void
-  onBack: () => void
+  onComplete: () => void
 }
 
-export function TwoFactorAuth({ tempToken, onSuccess, onBack }: TwoFactorAuthProps) {
-  const [qrCode, setQrCode] = useState("")
-  const [secret, setSecret] = useState("")
-  const [verificationCode, setVerificationCode] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-  const [isSettingUp, setIsSettingUp] = useState(true)
-  const [error, setError] = useState("")
+export function TwoFactorAuth({ onComplete }: TwoFactorAuthProps) {
+  const [step, setStep] = useState<"setup" | "verify" | "success">("setup")
+  const [qrCode, setQrCode] = useState<string>("")
+  const [secret, setSecret] = useState<string>("")
+  const [code, setCode] = useState<string>("")
+  const [error, setError] = useState<string>("")
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (tempToken) {
-      setupTwoFactor()
-    }
-  }, [tempToken])
+    setupTwoFactor()
+  }, [])
 
   const setupTwoFactor = async () => {
-    if (!tempToken) {
-      setError("Token temporário não encontrado")
-      return
-    }
-
     try {
-      console.log("=== INICIANDO SETUP 2FA ===")
+      setLoading(true)
+      setError("")
+
+      const token = localStorage.getItem("token")
+      if (!token) {
+        setError("Token de autenticação não encontrado")
+        return
+      }
+
+      console.log("Configurando 2FA...")
+
       const response = await fetch("/api/auth/2fa/setup", {
         method: "POST",
         headers: {
+          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
-          Authorization: `Bearer ${tempToken}`,
         },
       })
 
-      console.log("Response status:", response.status)
-      console.log("Response headers:", Object.fromEntries(response.headers.entries()))
+      const data = await response.json()
+      console.log("Resposta do setup:", data)
 
       if (!response.ok) {
-        const errorText = await response.text()
-        console.error("Setup 2FA error response:", errorText)
-        throw new Error(`HTTP ${response.status}: ${errorText}`)
+        throw new Error(data.error || `Erro HTTP: ${response.status}`)
       }
 
-      const contentType = response.headers.get("content-type")
-      if (!contentType || !contentType.includes("application/json")) {
-        const text = await response.text()
-        console.error("Response não é JSON:", text)
+      if (data.success && data.qrCode && data.secret) {
+        setQrCode(data.qrCode)
+        setSecret(data.manualEntryKey || data.secret)
+        console.log("2FA configurado com sucesso")
+      } else {
         throw new Error("Resposta inválida do servidor")
       }
-
-      const data = await response.json()
-      console.log("Setup 2FA success:", data)
-
-      if (data.qrCode && data.secret) {
-        setQrCode(data.qrCode)
-        setSecret(data.secret)
-        setIsSettingUp(false)
-        toast.success("QR Code gerado! Escaneie com seu app autenticador.")
-      } else {
-        throw new Error("Dados de 2FA inválidos recebidos")
-      }
-    } catch (error) {
-      console.error("=== ERRO NO SETUP 2FA ===", error)
-      setError(error instanceof Error ? error.message : "Erro ao configurar 2FA")
-      toast.error("Erro ao gerar QR Code")
+    } catch (error: any) {
+      console.error("Erro no setup 2FA:", error)
+      setError(error.message || "Erro ao configurar autenticação de dois fatores")
+    } finally {
+      setLoading(false)
     }
   }
 
-  const handleVerify = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!tempToken) {
-      setError("Token temporário não encontrado")
+  const verifyCode = async () => {
+    if (code.length !== 6) {
+      setError("Código deve ter 6 dígitos")
       return
     }
 
-    setIsLoading(true)
-    setError("")
-
     try {
+      setLoading(true)
+      setError("")
+
+      const token = localStorage.getItem("token")
+      if (!token) {
+        setError("Token de autenticação não encontrado")
+        return
+      }
+
+      console.log("Verificando código 2FA:", code)
+
       const response = await fetch("/api/auth/2fa/verify", {
         method: "POST",
         headers: {
+          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
-          Authorization: `Bearer ${tempToken}`,
         },
-        body: JSON.stringify({ code: verificationCode }),
+        body: JSON.stringify({ token: code }),
       })
 
       const data = await response.json()
+      console.log("Resposta da verificação:", data)
 
-      if (response.ok) {
-        onSuccess(data.token, data.user)
-        toast.success("2FA configurado com sucesso!")
-      } else {
-        setError(data.error || "Código inválido")
-        toast.error("Código de verificação inválido")
+      if (!response.ok) {
+        throw new Error(data.error || "Código inválido")
       }
-    } catch (error) {
-      console.error("Verify 2FA error:", error)
-      setError("Erro de conexão. Tente novamente.")
-      toast.error("Erro de conexão")
+
+      if (data.success && data.token) {
+        // Update token with 2FA verified
+        localStorage.setItem("token", data.token)
+        setStep("success")
+
+        // Auto-complete after 2 seconds
+        setTimeout(() => {
+          onComplete()
+        }, 2000)
+      } else {
+        throw new Error("Verificação falhou")
+      }
+    } catch (error: any) {
+      console.error("Erro na verificação:", error)
+      setError(error.message || "Código inválido")
+      setCode("")
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
   }
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 p-4">
-      <Card className="w-full max-w-md shadow-2xl border-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl">
-        <CardHeader className="space-y-4 text-center">
-          <div className="flex justify-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-r from-green-600 to-emerald-600 shadow-lg">
-              <Shield className="h-8 w-8 text-white" />
+  const handleCodeChange = (value: string) => {
+    setCode(value)
+    setError("")
+
+    // Auto-verify when 6 digits are entered
+    if (value.length === 6) {
+      setTimeout(() => verifyCode(), 100)
+    }
+  }
+
+  if (step === "success") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-emerald-100 p-4">
+        <Card className="w-full max-w-md">
+          <CardContent className="flex flex-col items-center justify-center p-8">
+            <CheckCircle className="h-16 w-16 text-green-500 mb-4" />
+            <h2 className="text-2xl font-bold text-center mb-2">2FA Configurado!</h2>
+            <p className="text-gray-600 text-center">Autenticação de dois fatores ativada com sucesso.</p>
+            <p className="text-sm text-gray-500 text-center mt-2">Redirecionando...</p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  if (step === "setup") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
+              <Smartphone className="h-6 w-6 text-blue-600" />
             </div>
-          </div>
-          <div>
-            <CardTitle className="text-2xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
-              Autenticação 2FA
-            </CardTitle>
-            <CardDescription className="text-slate-600 dark:text-slate-400">
-              Configure a autenticação de dois fatores
-            </CardDescription>
-          </div>
-        </CardHeader>
-
-        <CardContent className="space-y-6">
-          {isSettingUp ? (
-            <div className="text-center space-y-4">
-              <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-600" />
-              <p className="text-slate-600 dark:text-slate-400">Gerando QR Code...</p>
-            </div>
-          ) : (
-            <>
-              {/* QR Code */}
-              {qrCode && (
-                <div className="text-center space-y-4">
-                  <div className="bg-white p-4 rounded-lg inline-block shadow-sm">
-                    <img
-                      src={`data:image/svg+xml;utf8,${encodeURIComponent(qrCode)}`}
-                      alt="QR Code para 2FA"
-                      className="w-48 h-48 mx-auto"
-                    />
+            <CardTitle>Configurar Autenticação 2FA</CardTitle>
+            <CardDescription>Configure a autenticação de dois fatores para maior segurança</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {loading ? (
+              <div className="flex flex-col items-center space-y-4">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <p className="text-sm text-gray-600">Configurando 2FA...</p>
+              </div>
+            ) : (
+              <>
+                {qrCode && secret ? (
+                  <div className="text-center space-y-4">
+                    <p className="text-sm text-gray-600 font-medium">1. Escaneie o QR Code com seu app autenticador:</p>
+                    <div className="flex justify-center">
+                      <div className="bg-white p-4 rounded-lg border">
+                        <Image
+                          src={qrCode || "/placeholder.svg"}
+                          alt="QR Code para 2FA"
+                          width={200}
+                          height={200}
+                          className="rounded-lg"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-sm text-gray-600 font-medium">2. Ou digite manualmente esta chave:</p>
+                      <div className="bg-gray-100 p-3 rounded-lg">
+                        <code className="text-sm font-mono break-all">{secret}</code>
+                      </div>
+                    </div>
+                    <div className="text-xs text-gray-500 bg-blue-50 p-3 rounded-lg">
+                      <p>
+                        <strong>Apps recomendados:</strong>
+                      </p>
+                      <p>Google Authenticator, Authy, Microsoft Authenticator</p>
+                    </div>
                   </div>
-                  <Alert className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
-                    <Smartphone className="h-4 w-4 text-blue-600" />
-                    <AlertDescription className="text-blue-800 dark:text-blue-200">
-                      <strong>Escaneie o QR Code</strong> com seu app autenticador (Google Authenticator, Authy, etc.)
-                    </AlertDescription>
-                  </Alert>
-                </div>
-              )}
-
-              {/* Secret Key */}
-              {secret && (
-                <div className="space-y-2">
-                  <Label className="text-slate-700 dark:text-slate-300">
-                    Chave secreta (caso não consiga escanear):
-                  </Label>
-                  <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-lg">
-                    <code className="text-sm font-mono break-all text-slate-800 dark:text-slate-200">{secret}</code>
+                ) : (
+                  <div className="text-center">
+                    <p className="text-gray-600">Preparando configuração 2FA...</p>
                   </div>
-                </div>
-              )}
-
-              {/* Verification Form */}
-              <form onSubmit={handleVerify} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="code" className="text-slate-700 dark:text-slate-300">
-                    Código de verificação (6 dígitos)
-                  </Label>
-                  <Input
-                    id="code"
-                    type="text"
-                    value={verificationCode}
-                    onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                    placeholder="123456"
-                    maxLength={6}
-                    required
-                    className="h-11 text-center text-lg font-mono tracking-widest border-slate-300 dark:border-slate-600 focus:border-green-500 dark:focus:border-green-400"
-                  />
-                </div>
-
-                {error && (
-                  <Alert className="bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800">
-                    <AlertDescription className="text-red-800 dark:text-red-200">{error}</AlertDescription>
-                  </Alert>
                 )}
 
-                <div className="flex space-x-3">
-                  <Button type="button" variant="outline" onClick={onBack} className="flex-1 h-11 bg-transparent">
-                    <ArrowLeft className="mr-2 h-4 w-4" />
-                    Voltar
-                  </Button>
+                <div className="flex gap-3">
                   <Button
-                    type="submit"
-                    className="flex-1 h-11 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-200"
-                    disabled={isLoading || verificationCode.length !== 6}
+                    variant="outline"
+                    onClick={setupTwoFactor}
+                    className="flex-1 bg-transparent"
+                    disabled={loading}
                   >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Verificando...
-                      </>
-                    ) : (
-                      "Verificar"
-                    )}
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Recarregar
+                  </Button>
+                  <Button onClick={() => setStep("verify")} className="flex-1" disabled={!qrCode || loading}>
+                    Continuar
                   </Button>
                 </div>
-              </form>
-            </>
+              </>
+            )}
+
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>
+                  {error}
+                  {error.includes("Token") && (
+                    <div className="mt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          localStorage.removeItem("token")
+                          window.location.reload()
+                        }}
+                      >
+                        Fazer login novamente
+                      </Button>
+                    </div>
+                  )}
+                </AlertDescription>
+              </Alert>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
+            <Key className="h-6 w-6 text-green-600" />
+          </div>
+          <CardTitle>Verificar Código 2FA</CardTitle>
+          <CardDescription>Digite o código de 6 dígitos do seu app autenticador</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-4">
+            <div className="flex justify-center">
+              <InputOTP maxLength={6} value={code} onChange={handleCodeChange} disabled={loading}>
+                <InputOTPGroup>
+                  <InputOTPSlot index={0} />
+                  <InputOTPSlot index={1} />
+                  <InputOTPSlot index={2} />
+                  <InputOTPSlot index={3} />
+                  <InputOTPSlot index={4} />
+                  <InputOTPSlot index={5} />
+                </InputOTPGroup>
+              </InputOTP>
+            </div>
+
+            {loading && (
+              <div className="flex justify-center">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+              </div>
+            )}
+          </div>
+
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           )}
+
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={() => setStep("setup")} className="flex-1" disabled={loading}>
+              Voltar
+            </Button>
+            <Button onClick={verifyCode} className="flex-1" disabled={code.length !== 6 || loading}>
+              Verificar
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>
