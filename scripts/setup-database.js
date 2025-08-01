@@ -1,133 +1,142 @@
-import fs from "fs"
+import Database from "better-sqlite3"
+import bcrypt from "bcryptjs"
 import path from "path"
-import sqlite3 from "sqlite3"
+import fs from "fs"
 import { fileURLToPath } from "url"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-async function setupDatabase() {
-  try {
-    const dbPath = process.env.SQLITE_PATH || path.join(process.cwd(), "database.sqlite")
+const dbPath = process.env.SQLITE_PATH || path.join(process.cwd(), "data", "passwords.db")
 
-    console.log("🔧 Configurando banco de dados SQLite...")
-    console.log(`📁 Caminho do banco: ${dbPath}`)
+console.log("🚀 Setting up database...")
+console.log("📍 Database path:", dbPath)
 
-    // Criar diretório se não existir
-    const dbDir = path.dirname(dbPath)
-    if (!fs.existsSync(dbDir)) {
-      fs.mkdirSync(dbDir, { recursive: true })
-      console.log(`📁 Diretório criado: ${dbDir}`)
+const db = new Database(dbPath)
+db.pragma("journal_mode = WAL")
+
+try {
+  // Ensure data directory exists
+  const dataDir = path.dirname(dbPath)
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true })
+    console.log("✅ Created data directory")
+  }
+
+  // Initialize database (this will create tables and seed data)
+  console.log("📋 Creating users table...")
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      two_factor_secret TEXT,
+      two_factor_enabled BOOLEAN DEFAULT FALSE,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+
+  console.log("📋 Creating passwords table...")
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS passwords (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      username TEXT,
+      password TEXT NOT NULL,
+      url TEXT,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+    )
+  `)
+
+  console.log("📋 Creating indexes...")
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+    CREATE INDEX IF NOT EXISTS idx_passwords_user_id ON passwords(user_id);
+  `)
+
+  // Check if admin user exists
+  const existingUser = db.prepare("SELECT id FROM users WHERE email = ?").get("admin@example.com")
+
+  if (!existingUser) {
+    console.log("👤 Creating admin user...")
+
+    // Create admin user
+    const hashedPassword = bcrypt.hashSync("admin123", 10)
+    const insertUser = db.prepare(`
+      INSERT INTO users (email, password_hash, two_factor_enabled)
+      VALUES (?, ?, ?)
+    `)
+
+    const result = insertUser.run("admin@example.com", hashedPassword, false)
+    const userId = result.lastInsertRowid
+
+    console.log("✅ Admin user created with ID:", userId)
+
+    // Add sample passwords
+    console.log("📝 Adding sample passwords...")
+    const insertPassword = db.prepare(`
+      INSERT INTO passwords (user_id, title, username, password, url, notes)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `)
+
+    const samplePasswords = [
+      {
+        title: "Gmail",
+        username: "admin@gmail.com",
+        password: "MySecureGmailPass123!",
+        url: "https://gmail.com",
+        notes: "Personal email account",
+      },
+      {
+        title: "Facebook",
+        username: "admin@example.com",
+        password: "FacebookSecure456!",
+        url: "https://facebook.com",
+        notes: "Social media account",
+      },
+      {
+        title: "Banco do Brasil",
+        username: "admin123",
+        password: "BankSecure789!",
+        url: "https://bb.com.br",
+        notes: "Banking account - handle with care",
+      },
+    ]
+
+    for (const pwd of samplePasswords) {
+      insertPassword.run(userId, pwd.title, pwd.username, pwd.password, pwd.url, pwd.notes)
     }
 
-    const db = new sqlite3.Database(dbPath, (err) => {
-      if (err) {
-        console.error("❌ Erro ao abrir banco:", err)
-        return
-      }
-      console.log("✅ Banco SQLite aberto com sucesso!")
-    })
-
-    // SQL para criar tabelas
-    const createTablesSQL = `
-      -- Criar tabela de usuários
-      CREATE TABLE IF NOT EXISTS users (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          email TEXT UNIQUE NOT NULL,
-          password_hash TEXT NOT NULL,
-          two_factor_secret TEXT,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
-
-      -- Criar tabela de senhas
-      CREATE TABLE IF NOT EXISTS passwords (
-          id TEXT PRIMARY KEY,
-          user_id TEXT DEFAULT 'user-1',
-          title TEXT NOT NULL,
-          username TEXT NOT NULL,
-          encrypted_password TEXT NOT NULL,
-          url TEXT,
-          category TEXT NOT NULL DEFAULT 'other',
-          notes TEXT,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-      );
-
-      -- Criar índices para melhor performance
-      CREATE INDEX IF NOT EXISTS idx_passwords_user_id ON passwords(user_id);
-      CREATE INDEX IF NOT EXISTS idx_passwords_category ON passwords(category);
-      CREATE INDEX IF NOT EXISTS idx_passwords_title ON passwords(title);
-      CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-    `
-
-    // SQL para dados iniciais
-    const seedDataSQL = `
-      -- Inserir usuário de teste (senha: admin123)
-      INSERT OR IGNORE INTO users (id, name, email, password_hash, created_at, updated_at) 
-      VALUES (
-          'user-1', 
-          'Administrador', 
-          'admin@example.com', 
-          '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi',
-          datetime('now'),
-          datetime('now')
-      );
-
-      -- Inserir algumas senhas de exemplo
-      INSERT OR IGNORE INTO passwords (id, user_id, title, username, encrypted_password, url, category, notes, created_at, updated_at)
-      VALUES 
-      ('pass-1', 'user-1', 'Gmail', 'admin@gmail.com', 'encrypted_password_here', 'https://gmail.com', 'email', 'Conta principal do Gmail', datetime('now'), datetime('now')),
-      ('pass-2', 'user-1', 'Facebook', 'admin@example.com', 'encrypted_password_here', 'https://facebook.com', 'social', 'Rede social principal', datetime('now'), datetime('now')),
-      ('pass-3', 'user-1', 'Banco do Brasil', 'admin123', 'encrypted_password_here', 'https://bb.com.br', 'finance', 'Conta bancária principal', datetime('now'), datetime('now'));
-    `
-
-    return new Promise((resolve, reject) => {
-      db.serialize(() => {
-        // Executar criação de tabelas
-        db.exec(createTablesSQL, (err) => {
-          if (err) {
-            console.error("❌ Erro ao criar tabelas:", err)
-            reject(err)
-            return
-          }
-          console.log("✅ Tabelas criadas com sucesso!")
-
-          // Executar dados iniciais
-          db.exec(seedDataSQL, (err) => {
-            if (err) {
-              console.error("❌ Erro ao inserir dados iniciais:", err)
-              reject(err)
-              return
-            }
-            console.log("✅ Dados iniciais inseridos com sucesso!")
-
-            db.close((err) => {
-              if (err) {
-                console.error("❌ Erro ao fechar banco:", err)
-                reject(err)
-              } else {
-                console.log("🎉 Banco de dados configurado com sucesso!")
-                console.log("")
-                console.log("📧 Credenciais de teste:")
-                console.log("   Email: admin@example.com")
-                console.log("   Senha: admin123")
-                console.log("")
-                console.log("🚀 Execute 'npm run dev' para iniciar a aplicação")
-                resolve()
-              }
-            })
-          })
-        })
-      })
-    })
-  } catch (error) {
-    console.error("❌ Erro no setup:", error)
-    throw error
+    console.log("✅ Sample passwords added")
+  } else {
+    console.log("👤 Admin user already exists")
   }
-}
 
-// Executar setup
-setupDatabase().catch(console.error)
+  console.log("✅ Database initialized successfully")
+  console.log("✅ Tables created")
+
+  // Test the connection
+  const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get()
+  const passwordCount = db.prepare("SELECT COUNT(*) as count FROM passwords").get()
+
+  console.log(`📊 Users in database: ${userCount.count}`)
+  console.log(`📊 Passwords in database: ${passwordCount.count}`)
+
+  console.log("🎉 Database setup completed successfully!")
+  console.log("")
+  console.log("🔐 Test credentials:")
+  console.log("   Email: admin@example.com")
+  console.log("   Password: admin123")
+  console.log("")
+  console.log('🚀 Run "npm run dev" to start the application')
+} catch (error) {
+  console.error("❌ Database setup failed:", error)
+  process.exit(1)
+} finally {
+  db.close()
+}
