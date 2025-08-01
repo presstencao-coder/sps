@@ -1,5 +1,4 @@
 import { Suspense } from "react"
-import { PasswordManager } from "@/components/password-manager"
 import { AuthWrapper } from "@/components/auth-wrapper"
 
 export default function Home() {
@@ -12,9 +11,7 @@ export default function Home() {
         </div>
 
         <Suspense fallback={<div className="text-center">Carregando...</div>}>
-          <AuthWrapper>
-            <PasswordManager />
-          </AuthWrapper>
+          <AuthWrapper />
         </Suspense>
       </div>
     </div>

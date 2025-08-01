@@ -1,11 +1,12 @@
 {
-  "name": "my-v0-project",
-  "version": "0.1.0",
+  "name": "securevault-password-manager",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "build": "next build",
     "dev": "next dev",
     "lint": "next lint",
+    "setup": "node scripts/setup-database.js",
     "start": "next start"
   },
   "dependencies": {
@@ -46,7 +47,6 @@
     "date-fns": "4.1.0",
     "embla-carousel-react": "latest",
     "fs": "latest",
-    "geist": "latest",
     "input-otp": "latest",
     "jsonwebtoken": "latest",
     "lucide-react": "^0.454.0",

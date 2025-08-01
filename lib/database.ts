@@ -171,6 +171,39 @@ export async function getUserById(id: string): Promise<User | null> {
   }
 }
 
+export async function updateUser(userId: string, name: string, email: string): Promise<void> {
+  try {
+    const userIndex = users.findIndex((user) => user.id === userId)
+    if (userIndex !== -1) {
+      users[userIndex].name = name
+      users[userIndex].email = email
+      users[userIndex].updated_at = new Date().toISOString()
+      console.log("Usuário atualizado:", userId)
+    } else {
+      throw new Error("Usuário não encontrado")
+    }
+  } catch (error) {
+    console.error("Erro ao atualizar usuário:", error)
+    throw error
+  }
+}
+
+export async function updateUserPassword(userId: string, passwordHash: string): Promise<void> {
+  try {
+    const userIndex = users.findIndex((user) => user.id === userId)
+    if (userIndex !== -1) {
+      users[userIndex].password_hash = passwordHash
+      users[userIndex].updated_at = new Date().toISOString()
+      console.log("Senha atualizada para usuário:", userId)
+    } else {
+      throw new Error("Usuário não encontrado")
+    }
+  } catch (error) {
+    console.error("Erro ao atualizar senha:", error)
+    throw error
+  }
+}
+
 export async function updateUser2FA(userId: string, secret: string, enabled: boolean): Promise<void> {
   try {
     const userIndex = users.findIndex((user) => user.id === userId)

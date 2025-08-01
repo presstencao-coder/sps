@@ -1,115 +1,161 @@
 "use client"
 
-import type React from "react"
 import { useState, useEffect } from "react"
 import { LoginForm } from "./login-form"
-import { TwoFactorAuth } from "./two-factor-auth"
 import { RegisterForm } from "./register-form"
+import { TwoFactorAuth } from "./two-factor-auth"
+import { PasswordManager } from "./password-manager"
+import { ProfilePage } from "./profile-page"
+import { SettingsPage } from "./settings-page"
+import { MainLayout } from "./main-layout"
+import { Toaster } from "@/components/ui/toaster"
 
-interface AuthWrapperProps {
-  children: React.ReactNode
+type AuthState = "login" | "register" | "2fa" | "authenticated"
+type Page = "passwords" | "profile" | "settings"
+
+interface UserInfo {
+  name: string
+  email: string
+  twoFactorEnabled: boolean
 }
 
-export function AuthWrapper({ children }: AuthWrapperProps) {
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [showTwoFactor, setShowTwoFactor] = useState(false)
-  const [showRegister, setShowRegister] = useState(false)
-  const [userToken, setUserToken] = useState("")
-  const [isLoading, setIsLoading] = useState(true)
+export function AuthWrapper() {
+  const [authState, setAuthState] = useState<AuthState>("login")
+  const [currentPage, setCurrentPage] = useState<Page>("passwords")
+  const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Verificar se já está autenticado
-    const token = localStorage.getItem("token")
-    if (token) {
-      // Verificar se o token é válido
-      verifyToken(token)
-    } else {
-      setIsLoading(false)
-    }
+    checkAuthStatus()
   }, [])
 
-  const verifyToken = async (token: string) => {
+  const checkAuthStatus = async () => {
     try {
-      // Decodificar o token para verificar se tem 2FA
-      const payload = JSON.parse(atob(token.split(".")[1]))
+      const token = localStorage.getItem("token")
+      if (!token) {
+        setLoading(false)
+        return
+      }
 
-      if (payload.twoFactorVerified === true) {
-        setIsAuthenticated(true)
+      // Verify token and get user info
+      const response = await fetch("/api/user/profile", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        const userData = await response.json()
+        setUserInfo({
+          name: userData.name,
+          email: userData.email,
+          twoFactorEnabled: userData.twoFactorEnabled,
+        })
+        setAuthState("authenticated")
       } else {
-        // Token válido mas sem 2FA verificado
-        setUserToken(token)
-        setShowTwoFactor(true)
+        localStorage.removeItem("token")
       }
     } catch (error) {
-      // Token inválido, remover
+      console.error("Erro ao verificar autenticação:", error)
       localStorage.removeItem("token")
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
   }
 
-  const handleLoginSuccess = (token: string, requiresTwoFactor: boolean) => {
-    setUserToken(token)
-    localStorage.setItem("token", token)
-
-    if (requiresTwoFactor) {
-      setShowTwoFactor(true)
+  const handleLoginSuccess = (userData: any) => {
+    if (userData.requiresTwoFactor) {
+      setAuthState("2fa")
     } else {
-      setIsAuthenticated(true)
+      localStorage.setItem("token", userData.token)
+      setUserInfo({
+        name: userData.user.name,
+        email: userData.user.email,
+        twoFactorEnabled: userData.user.twoFactorEnabled,
+      })
+      setAuthState("authenticated")
     }
   }
 
-  const handleTwoFactorComplete = () => {
-    setShowTwoFactor(false)
-    setIsAuthenticated(true)
-  }
-
-  const handleRegisterSuccess = (token: string) => {
-    setUserToken(token)
-    localStorage.setItem("token", token)
-    setShowRegister(false)
-    setShowTwoFactor(true) // Sempre mostrar 2FA após registro
+  const handle2FASuccess = (userData: any) => {
+    localStorage.setItem("token", userData.token)
+    setUserInfo({
+      name: userData.user.name,
+      email: userData.user.email,
+      twoFactorEnabled: userData.user.twoFactorEnabled,
+    })
+    setAuthState("authenticated")
   }
 
   const handleLogout = () => {
     localStorage.removeItem("token")
-    setIsAuthenticated(false)
-    setShowTwoFactor(false)
-    setShowRegister(false)
-    setUserToken("")
+    setUserInfo(null)
+    setAuthState("login")
+    setCurrentPage("passwords")
   }
 
-  if (isLoading) {
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+        <div className="flex items-center space-x-3">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <span className="text-slate-600 dark:text-slate-400">Carregando...</span>
+        </div>
       </div>
     )
   }
 
-  if (!isAuthenticated) {
-    if (showTwoFactor) {
-      return <TwoFactorAuth onComplete={handleTwoFactorComplete} />
-    }
+  if (authState === "login") {
+    return (
+      <>
+        <LoginForm onLoginSuccess={handleLoginSuccess} onSwitchToRegister={() => setAuthState("register")} />
+        <Toaster />
+      </>
+    )
+  }
 
-    if (showRegister) {
-      return <RegisterForm onSuccess={handleRegisterSuccess} onBackToLogin={() => setShowRegister(false)} />
-    }
+  if (authState === "register") {
+    return (
+      <>
+        <RegisterForm onRegisterSuccess={() => setAuthState("login")} onSwitchToLogin={() => setAuthState("login")} />
+        <Toaster />
+      </>
+    )
+  }
 
-    return <LoginForm onSuccess={handleLoginSuccess} onShowRegister={() => setShowRegister(true)} />
+  if (authState === "2fa") {
+    return (
+      <>
+        <TwoFactorAuth onSuccess={handle2FASuccess} onBack={() => setAuthState("login")} />
+        <Toaster />
+      </>
+    )
+  }
+
+  const renderCurrentPage = () => {
+    switch (currentPage) {
+      case "passwords":
+        return <PasswordManager />
+      case "profile":
+        return <ProfilePage />
+      case "settings":
+        return <SettingsPage />
+      default:
+        return <PasswordManager />
+    }
   }
 
   return (
-    <div>
-      <div className="flex justify-end mb-4">
-        <button
-          onClick={handleLogout}
-          className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-        >
-          Sair
-        </button>
-      </div>
-      {children}
-    </div>
+    <>
+      <MainLayout
+        currentPage={currentPage}
+        onPageChange={setCurrentPage}
+        onLogout={handleLogout}
+        userInfo={userInfo || undefined}
+      >
+        {renderCurrentPage()}
+      </MainLayout>
+      <Toaster />
+    </>
   )
 }
