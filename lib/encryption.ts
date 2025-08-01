@@ -1,40 +1,44 @@
 import crypto from "crypto"
 
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || "your-32-character-secret-key-here"
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || "default-key-change-this-in-production-32-chars"
 const ALGORITHM = "aes-256-gcm"
 
 export function encrypt(text: string): string {
   try {
+    // Garantir que a chave tenha 32 bytes
+    const key = crypto.scryptSync(ENCRYPTION_KEY, "salt", 32)
     const iv = crypto.randomBytes(16)
-    const cipher = crypto.createCipher(ALGORITHM, ENCRYPTION_KEY)
+
+    const cipher = crypto.createCipher(ALGORITHM, key)
 
     let encrypted = cipher.update(text, "utf8", "hex")
     encrypted += cipher.final("hex")
 
     const authTag = cipher.getAuthTag()
 
+    // Retornar: iv:authTag:encrypted
     return iv.toString("hex") + ":" + authTag.toString("hex") + ":" + encrypted
   } catch (error) {
-    console.error("Encryption error:", error)
-    // Fallback to base64 encoding if encryption fails
-    return Buffer.from(text).toString("base64")
+    console.error("❌ Erro ao criptografar:", error)
+    throw new Error("Falha na criptografia")
   }
 }
 
-export function decrypt(encryptedText: string): string {
+export function decrypt(encryptedData: string): string {
   try {
-    const parts = encryptedText.split(":")
-
+    const parts = encryptedData.split(":")
     if (parts.length !== 3) {
-      // Fallback: assume it's base64 encoded
-      return Buffer.from(encryptedText, "base64").toString("utf8")
+      throw new Error("Formato de dados criptografados inválido")
     }
 
     const iv = Buffer.from(parts[0], "hex")
     const authTag = Buffer.from(parts[1], "hex")
     const encrypted = parts[2]
 
-    const decipher = crypto.createDecipher(ALGORITHM, ENCRYPTION_KEY)
+    // Garantir que a chave tenha 32 bytes
+    const key = crypto.scryptSync(ENCRYPTION_KEY, "salt", 32)
+
+    const decipher = crypto.createDecipher(ALGORITHM, key)
     decipher.setAuthTag(authTag)
 
     let decrypted = decipher.update(encrypted, "hex", "utf8")
@@ -42,35 +46,12 @@ export function decrypt(encryptedText: string): string {
 
     return decrypted
   } catch (error) {
-    console.error("Decryption error:", error)
-    // Fallback to base64 decoding if decryption fails
-    try {
-      return Buffer.from(encryptedText, "base64").toString("utf8")
-    } catch {
-      return encryptedText
-    }
+    console.error("❌ Erro ao descriptografar:", error)
+    throw new Error("Falha na descriptografia")
   }
 }
 
-export function generateSecurePassword(length = 16): string {
-  const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
-  let password = ""
-
-  for (let i = 0; i < length; i++) {
-    const randomIndex = crypto.randomInt(0, charset.length)
-    password += charset[randomIndex]
-  }
-
-  return password
-}
-
-export function hashPassword(password: string): string {
-  return crypto
-    .createHash("sha256")
-    .update(password + ENCRYPTION_KEY)
-    .digest("hex")
-}
-
-export function verifyPassword(password: string, hash: string): boolean {
-  return hashPassword(password) === hash
+// Função para gerar uma chave segura
+export function generateEncryptionKey(): string {
+  return crypto.randomBytes(32).toString("hex")
 }
