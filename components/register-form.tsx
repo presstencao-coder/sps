@@ -16,7 +16,7 @@ interface RegisterFormProps {
   onSwitchToLogin: () => void
 }
 
-export default function RegisterForm({ onRegisterSuccess, onSwitchToLogin }: RegisterFormProps) {
+export function RegisterForm({ onRegisterSuccess, onSwitchToLogin }: RegisterFormProps) {
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -208,3 +208,5 @@ export default function RegisterForm({ onRegisterSuccess, onSwitchToLogin }: Reg
     </div>
   )
 }
+
+export default RegisterForm

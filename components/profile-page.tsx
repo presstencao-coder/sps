@@ -19,7 +19,7 @@ interface ProfilePageProps {
   }
 }
 
-export default function ProfilePage({ user }: ProfilePageProps) {
+export function ProfilePage({ user }: ProfilePageProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -52,7 +52,6 @@ export default function ProfilePage({ user }: ProfilePageProps) {
       if (response.ok) {
         setSuccess("Perfil atualizado com sucesso!")
         setIsEditing(false)
-        // Aqui você pode atualizar o contexto do usuário se necessário
       } else {
         const data = await response.json()
         setError(data.error || "Erro ao atualizar perfil")
@@ -280,3 +279,5 @@ export default function ProfilePage({ user }: ProfilePageProps) {
     </div>
   )
 }
+
+export default ProfilePage

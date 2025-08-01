@@ -22,7 +22,7 @@ interface SettingsPageProps {
   }
 }
 
-export default function SettingsPage({ user }: SettingsPageProps) {
+export function SettingsPage({ user }: SettingsPageProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
@@ -106,7 +106,6 @@ export default function SettingsPage({ user }: SettingsPageProps) {
       if (response.ok) {
         const message = user.twoFactorEnabled ? "2FA desabilitado com sucesso!" : "2FA configurado com sucesso!"
         setSuccess(message)
-        // Aqui você pode atualizar o estado do usuário
       } else {
         const data = await response.json()
         setError(data.error || "Erro ao alterar configuração 2FA")
@@ -324,3 +323,5 @@ export default function SettingsPage({ user }: SettingsPageProps) {
     </div>
   )
 }
+
+export default SettingsPage

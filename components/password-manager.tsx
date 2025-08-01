@@ -31,7 +31,7 @@ interface PasswordEntry {
   updatedAt: string
 }
 
-export default function PasswordManager() {
+export function PasswordManager() {
   const [passwords, setPasswords] = useState<PasswordEntry[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("all")
@@ -60,21 +60,15 @@ export default function PasswordManager() {
       setLoading(true)
       setError("")
 
-      console.log("Carregando senhas...")
-
       const response = await fetch("/api/passwords", {
         headers: getAuthHeaders(),
       })
 
-      console.log("Response status:", response.status)
-
       if (response.ok) {
         const data = await response.json()
-        console.log("Senhas carregadas:", data.length)
         setPasswords(data)
       } else {
         const errorData = await response.json()
-        console.error("Erro ao carregar senhas:", errorData)
         setError(errorData.error || "Erro ao carregar senhas")
       }
     } catch (error) {
@@ -107,7 +101,6 @@ export default function PasswordManager() {
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text)
-      // Aqui você pode adicionar uma notificação de sucesso
     } catch (error) {
       console.error("Erro ao copiar:", error)
     }
@@ -125,7 +118,7 @@ export default function PasswordManager() {
       })
 
       if (response.ok) {
-        await loadPasswords() // Recarregar lista
+        await loadPasswords()
       } else {
         const errorData = await response.json()
         setError(errorData.error || "Erro ao deletar senha")
@@ -370,8 +363,6 @@ function PasswordForm({ password, onSuccess, onCancel }: PasswordFormProps) {
     setError("")
 
     try {
-      console.log("Salvando senha:", formData.title)
-
       const url = password ? `/api/passwords/${password.id}` : "/api/passwords"
       const method = password ? "PUT" : "POST"
 
@@ -381,14 +372,10 @@ function PasswordForm({ password, onSuccess, onCancel }: PasswordFormProps) {
         body: JSON.stringify(formData),
       })
 
-      console.log("Response status:", response.status)
-
       if (response.ok) {
-        console.log("Senha salva com sucesso")
         onSuccess()
       } else {
         const data = await response.json()
-        console.error("Erro ao salvar:", data)
         setError(data.error || "Erro ao salvar senha")
       }
     } catch (error) {
@@ -506,3 +493,5 @@ function PasswordForm({ password, onSuccess, onCancel }: PasswordFormProps) {
     </>
   )
 }
+
+export default PasswordManager

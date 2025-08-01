@@ -2,9 +2,9 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Shield, Key, User, Settings, LogOut, Menu, X, Sun, Moon, Lock } from "lucide-react"
+import { Shield, Key, User, Settings, LogOut, Menu, X, Sun, Moon, Home } from "lucide-react"
 import PasswordManager from "./password-manager"
 import ProfilePage from "./profile-page"
 import SettingsPage from "./settings-page"
@@ -30,24 +30,9 @@ export default function MainLayout({ user, onLogout }: MainLayoutProps) {
   }
 
   const menuItems = [
-    {
-      id: "passwords",
-      label: "Senhas",
-      icon: Key,
-      description: "Gerencie suas senhas",
-    },
-    {
-      id: "profile",
-      label: "Perfil",
-      icon: User,
-      description: "Informações pessoais",
-    },
-    {
-      id: "settings",
-      label: "Configurações",
-      icon: Settings,
-      description: "Segurança e preferências",
-    },
+    { id: "passwords", label: "Senhas", icon: Key },
+    { id: "profile", label: "Perfil", icon: User },
+    { id: "settings", label: "Configurações", icon: Settings },
   ]
 
   const renderContent = () => {
@@ -64,29 +49,22 @@ export default function MainLayout({ user, onLogout }: MainLayoutProps) {
   }
 
   return (
-    <div
-      className={`min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 ${darkMode ? "dark" : ""}`}
-    >
+    <div className={`min-h-screen bg-slate-50 dark:bg-slate-900 ${darkMode ? "dark" : ""}`}>
       {/* Mobile Header */}
       <div className="lg:hidden bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 py-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center space-x-3">
             <Button variant="ghost" size="sm" onClick={() => setSidebarOpen(!sidebarOpen)}>
-              {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </Button>
-            <div className="flex items-center gap-2">
-              <Shield className="w-6 h-6 text-blue-600" />
-              <span className="font-bold text-slate-900 dark:text-slate-100">SecureVault</span>
+            <div className="flex items-center space-x-2">
+              <Shield className="h-6 w-6 text-blue-600" />
+              <span className="font-bold text-lg">SecureVault</span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={toggleDarkMode}>
-              {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </Button>
-            <Button variant="ghost" size="sm" onClick={onLogout}>
-              <LogOut className="w-4 h-4" />
-            </Button>
-          </div>
+          <Button variant="ghost" size="sm" onClick={toggleDarkMode}>
+            {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+          </Button>
         </div>
       </div>
 
@@ -94,93 +72,75 @@ export default function MainLayout({ user, onLogout }: MainLayoutProps) {
         {/* Sidebar */}
         <div
           className={`
-          fixed lg:static inset-y-0 left-0 z-50 w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 transform transition-transform duration-200 ease-in-out
-          ${sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
+          fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 transform transition-transform duration-200 ease-in-out
+          lg:translate-x-0 lg:static lg:inset-0
+          ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
         `}
         >
-          {/* Desktop Header */}
-          <div className="hidden lg:flex items-center gap-3 p-6 border-b border-slate-200 dark:border-slate-700">
-            <Shield className="w-8 h-8 text-blue-600" />
-            <div>
-              <h1 className="font-bold text-xl text-slate-900 dark:text-slate-100">SecureVault</h1>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Gerenciador de Senhas</p>
+          <div className="flex flex-col h-full">
+            {/* Logo */}
+            <div className="hidden lg:flex items-center space-x-2 p-6 border-b border-slate-200 dark:border-slate-700">
+              <Shield className="h-8 w-8 text-blue-600" />
+              <span className="font-bold text-xl text-slate-900 dark:text-white">SecureVault</span>
             </div>
-          </div>
 
-          {/* User Info */}
-          <div className="p-6 border-b border-slate-200 dark:border-slate-700">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
-                <User className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            {/* User Info */}
+            <div className="p-6 border-b border-slate-200 dark:border-slate-700">
+              <div className="flex items-center space-x-3">
+                <Avatar className="h-10 w-10">
+                  <AvatarFallback className="bg-blue-600 text-white">
+                    {user.name ? user.name.charAt(0).toUpperCase() : user.email.charAt(0).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-slate-900 dark:text-white truncate">
+                    {user.name || "Usuário"}
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{user.email}</p>
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-slate-900 dark:text-slate-100 truncate">{user.name || "Usuário"}</p>
-                <p className="text-sm text-slate-500 dark:text-slate-400 truncate">{user.email}</p>
+              <div className="mt-3">
+                <Badge variant={user.twoFactorEnabled ? "default" : "secondary"} className="text-xs">
+                  <Shield className="w-3 h-3 mr-1" />
+                  2FA {user.twoFactorEnabled ? "Ativo" : "Inativo"}
+                </Badge>
               </div>
             </div>
-            <div className="mt-3 flex items-center gap-2">
-              <Badge variant={user.twoFactorEnabled ? "default" : "secondary"} className="text-xs">
-                <Lock className="w-3 h-3 mr-1" />
-                2FA {user.twoFactorEnabled ? "Ativo" : "Inativo"}
-              </Badge>
-            </div>
-          </div>
 
-          {/* Navigation */}
-          <nav className="p-4 space-y-2">
-            {menuItems.map((item) => {
-              const Icon = item.icon
-              const isActive = activeTab === item.id
+            {/* Navigation */}
+            <nav className="flex-1 p-4 space-y-2">
+              {menuItems.map((item) => {
+                const Icon = item.icon
+                return (
+                  <Button
+                    key={item.id}
+                    variant={activeTab === item.id ? "default" : "ghost"}
+                    className="w-full justify-start"
+                    onClick={() => {
+                      setActiveTab(item.id)
+                      setSidebarOpen(false)
+                    }}
+                  >
+                    <Icon className="mr-3 h-4 w-4" />
+                    {item.label}
+                  </Button>
+                )
+              })}
+            </nav>
 
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    setActiveTab(item.id)
-                    setSidebarOpen(false)
-                  }}
-                  className={`
-                    w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors
-                    ${
-                      isActive
-                        ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800"
-                        : "text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"
-                    }
-                  `}
-                >
-                  <Icon className="w-5 h-5" />
-                  <div>
-                    <div className="font-medium">{item.label}</div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400">{item.description}</div>
-                  </div>
-                </button>
-              )
-            })}
-          </nav>
-
-          <Separator className="mx-4" />
-
-          {/* Stats */}
-          <div className="p-4 space-y-3">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-600 dark:text-slate-400">Senhas Salvas</span>
-              <Badge variant="outline">0</Badge>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-600 dark:text-slate-400">Última Atividade</span>
-              <span className="text-xs text-slate-500 dark:text-slate-400">Agora</span>
-            </div>
-          </div>
-
-          {/* Bottom Actions */}
-          <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
-            <div className="flex gap-2">
-              <Button variant="ghost" size="sm" onClick={toggleDarkMode} className="flex-1">
-                {darkMode ? <Sun className="w-4 h-4 mr-2" /> : <Moon className="w-4 h-4 mr-2" />}
-                {darkMode ? "Claro" : "Escuro"}
+            {/* Footer */}
+            <div className="p-4 border-t border-slate-200 dark:border-slate-700 space-y-2">
+              <Button variant="ghost" className="w-full justify-start hidden lg:flex" onClick={toggleDarkMode}>
+                {darkMode ? <Sun className="mr-3 h-4 w-4" /> : <Moon className="mr-3 h-4 w-4" />}
+                {darkMode ? "Modo Claro" : "Modo Escuro"}
               </Button>
-              <Button variant="ghost" size="sm" onClick={onLogout}>
-                <LogOut className="w-4 h-4" />
+              <Button
+                variant="ghost"
+                className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+                onClick={onLogout}
+              >
+                <LogOut className="mr-3 h-4 w-4" />
+                Sair
               </Button>
             </div>
           </div>
@@ -194,33 +154,30 @@ export default function MainLayout({ user, onLogout }: MainLayoutProps) {
         {/* Main Content */}
         <div className="flex-1 lg:ml-0">
           <div className="p-6">
-            {/* Page Header */}
-            <div className="mb-6">
+            {/* Header */}
+            <div className="mb-8">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                    {menuItems.find((item) => item.id === activeTab)?.label}
-                  </h2>
+                  <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
+                    {menuItems.find((item) => item.id === activeTab)?.label || "Dashboard"}
+                  </h1>
                   <p className="text-slate-600 dark:text-slate-400 mt-1">
-                    {menuItems.find((item) => item.id === activeTab)?.description}
+                    {activeTab === "passwords" && "Gerencie suas senhas com segurança"}
+                    {activeTab === "profile" && "Visualize e edite suas informações pessoais"}
+                    {activeTab === "settings" && "Configure suas preferências de segurança"}
                   </p>
                 </div>
-
-                {/* Desktop Actions */}
-                <div className="hidden lg:flex items-center gap-2">
-                  <Button variant="ghost" size="sm" onClick={toggleDarkMode}>
-                    {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={onLogout}>
-                    <LogOut className="w-4 h-4 mr-2" />
-                    Sair
-                  </Button>
+                <div className="hidden lg:flex items-center space-x-2">
+                  <Badge variant="outline" className="text-xs">
+                    <Home className="w-3 h-3 mr-1" />
+                    Online
+                  </Badge>
                 </div>
               </div>
             </div>
 
-            {/* Page Content */}
-            <div className="max-w-7xl">{renderContent()}</div>
+            {/* Content */}
+            <div className="max-w-7xl mx-auto">{renderContent()}</div>
           </div>
         </div>
       </div>
