@@ -1,10 +1,10 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect } from "react"
 import { LoginForm } from "./login-form"
 import { TwoFactorAuth } from "./two-factor-auth"
+import { RegisterForm } from "./register-form"
 
 interface AuthWrapperProps {
   children: React.ReactNode
@@ -14,6 +14,7 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [showTwoFactor, setShowTwoFactor] = useState(false)
   const [userEmail, setUserEmail] = useState("")
+  const [showRegister, setShowRegister] = useState(false)
 
   useEffect(() => {
     // Verificar se já está autenticado
@@ -47,7 +48,12 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
     if (showTwoFactor) {
       return <TwoFactorAuth email={userEmail} onSuccess={handleTwoFactorSuccess} />
     }
-    return <LoginForm onSuccess={handleLoginSuccess} />
+
+    if (showRegister) {
+      return <RegisterForm onSuccess={handleLoginSuccess} onBackToLogin={() => setShowRegister(false)} />
+    }
+
+    return <LoginForm onSuccess={handleLoginSuccess} onShowRegister={() => setShowRegister(true)} />
   }
 
   return (

@@ -12,9 +12,10 @@ import { Eye, EyeOff, Shield } from "lucide-react"
 
 interface LoginFormProps {
   onSuccess: (email: string) => void
+  onShowRegister: () => void
 }
 
-export function LoginForm({ onSuccess }: LoginFormProps) {
+export function LoginForm({ onSuccess, onShowRegister }: LoginFormProps) {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
@@ -102,6 +103,16 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? "Entrando..." : "Entrar"}
             </Button>
+
+            <div className="text-center">
+              <button
+                type="button"
+                onClick={onShowRegister}
+                className="text-sm text-blue-600 hover:text-blue-700 underline"
+              >
+                Não tem uma conta? Criar conta
+              </button>
+            </div>
           </form>
         </CardContent>
       </Card>
