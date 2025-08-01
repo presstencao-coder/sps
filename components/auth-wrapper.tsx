@@ -1,43 +1,73 @@
 "use client"
 
+import type React from "react"
 import { useState, useEffect } from "react"
 import { LoginForm } from "./login-form"
-import { RegisterForm } from "./register-form"
 import { TwoFactorAuth } from "./two-factor-auth"
+import { RegisterForm } from "./register-form"
+import { MainLayout } from "./main-layout"
 import { PasswordManager } from "./password-manager"
 import { ProfilePage } from "./profile-page"
 import { SettingsPage } from "./settings-page"
-import { MainLayout } from "./main-layout"
 import { Toaster } from "@/components/ui/toaster"
 
-type AuthState = "login" | "register" | "2fa" | "authenticated"
-type Page = "passwords" | "profile" | "settings"
-
-interface UserInfo {
-  name: string
-  email: string
-  twoFactorEnabled: boolean
+interface AuthWrapperProps {
+  children: React.ReactNode
 }
 
-export function AuthWrapper() {
-  const [authState, setAuthState] = useState<AuthState>("login")
-  const [currentPage, setCurrentPage] = useState<Page>("passwords")
-  const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
-  const [loading, setLoading] = useState(true)
+export function AuthWrapper({ children }: AuthWrapperProps) {
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [showTwoFactor, setShowTwoFactor] = useState(false)
+  const [showRegister, setShowRegister] = useState(false)
+  const [userToken, setUserToken] = useState("")
+  const [isLoading, setIsLoading] = useState(true)
+  const [currentPage, setCurrentPage] = useState<"passwords" | "profile" | "settings">("passwords")
+  const [userInfo, setUserInfo] = useState<
+    | {
+        name: string
+        email: string
+        twoFactorEnabled: boolean
+      }
+    | undefined
+  >()
 
   useEffect(() => {
-    checkAuthStatus()
+    // Verificar se já está autenticado
+    const token = localStorage.getItem("token")
+    if (token) {
+      // Verificar se o token é válido
+      verifyToken(token)
+    } else {
+      setIsLoading(false)
+    }
   }, [])
 
-  const checkAuthStatus = async () => {
+  const verifyToken = async (token: string) => {
     try {
-      const token = localStorage.getItem("token")
-      if (!token) {
-        setLoading(false)
-        return
-      }
+      // Decodificar o token para verificar se tem 2FA
+      const payload = JSON.parse(atob(token.split(".")[1]))
+      console.log("Token payload:", payload)
 
-      // Verify token and get user info
+      if (payload.twoFactorVerified === true) {
+        setIsAuthenticated(true)
+        // Load user info
+        await loadUserInfo(token)
+      } else {
+        // Token válido mas sem 2FA verificado
+        setUserToken(token)
+        setShowTwoFactor(true)
+      }
+    } catch (error) {
+      console.error("Erro ao verificar token:", error)
+      // Token inválido, remover
+      localStorage.removeItem("token")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const loadUserInfo = async (token: string) => {
+    try {
       const response = await fetch("/api/user/profile", {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -45,91 +75,56 @@ export function AuthWrapper() {
       })
 
       if (response.ok) {
-        const userData = await response.json()
+        const data = await response.json()
         setUserInfo({
-          name: userData.name,
-          email: userData.email,
-          twoFactorEnabled: userData.twoFactorEnabled,
+          name: data.name,
+          email: data.email,
+          twoFactorEnabled: data.twoFactorEnabled,
         })
-        setAuthState("authenticated")
-      } else {
-        localStorage.removeItem("token")
       }
     } catch (error) {
-      console.error("Erro ao verificar autenticação:", error)
-      localStorage.removeItem("token")
-    } finally {
-      setLoading(false)
+      console.error("Erro ao carregar info do usuário:", error)
     }
   }
 
-  const handleLoginSuccess = (userData: any) => {
-    if (userData.requiresTwoFactor) {
-      setAuthState("2fa")
+  const handleLoginSuccess = (token: string, requiresTwoFactor: boolean) => {
+    console.log("Login success:", { requiresTwoFactor })
+    setUserToken(token)
+    localStorage.setItem("token", token)
+
+    if (requiresTwoFactor) {
+      setShowTwoFactor(true)
     } else {
-      localStorage.setItem("token", userData.token)
-      setUserInfo({
-        name: userData.user.name,
-        email: userData.user.email,
-        twoFactorEnabled: userData.user.twoFactorEnabled,
-      })
-      setAuthState("authenticated")
+      setIsAuthenticated(true)
+      loadUserInfo(token)
     }
   }
 
-  const handle2FASuccess = (userData: any) => {
-    localStorage.setItem("token", userData.token)
-    setUserInfo({
-      name: userData.user.name,
-      email: userData.user.email,
-      twoFactorEnabled: userData.user.twoFactorEnabled,
-    })
-    setAuthState("authenticated")
+  const handleTwoFactorComplete = () => {
+    console.log("2FA complete")
+    setShowTwoFactor(false)
+    setIsAuthenticated(true)
+    const token = localStorage.getItem("token")
+    if (token) {
+      loadUserInfo(token)
+    }
+  }
+
+  const handleRegisterSuccess = (token: string) => {
+    setUserToken(token)
+    localStorage.setItem("token", token)
+    setShowRegister(false)
+    setShowTwoFactor(true) // Sempre mostrar 2FA após registro
   }
 
   const handleLogout = () => {
     localStorage.removeItem("token")
-    setUserInfo(null)
-    setAuthState("login")
+    setIsAuthenticated(false)
+    setShowTwoFactor(false)
+    setShowRegister(false)
+    setUserToken("")
+    setUserInfo(undefined)
     setCurrentPage("passwords")
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
-        <div className="flex items-center space-x-3">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <span className="text-slate-600 dark:text-slate-400">Carregando...</span>
-        </div>
-      </div>
-    )
-  }
-
-  if (authState === "login") {
-    return (
-      <>
-        <LoginForm onLoginSuccess={handleLoginSuccess} onSwitchToRegister={() => setAuthState("register")} />
-        <Toaster />
-      </>
-    )
-  }
-
-  if (authState === "register") {
-    return (
-      <>
-        <RegisterForm onRegisterSuccess={() => setAuthState("login")} onSwitchToLogin={() => setAuthState("login")} />
-        <Toaster />
-      </>
-    )
-  }
-
-  if (authState === "2fa") {
-    return (
-      <>
-        <TwoFactorAuth onSuccess={handle2FASuccess} onBack={() => setAuthState("login")} />
-        <Toaster />
-      </>
-    )
   }
 
   const renderCurrentPage = () => {
@@ -145,14 +140,47 @@ export function AuthWrapper() {
     }
   }
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-slate-600">Carregando SecureVault...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    if (showTwoFactor) {
+      return (
+        <>
+          <TwoFactorAuth onComplete={handleTwoFactorComplete} />
+          <Toaster />
+        </>
+      )
+    }
+
+    if (showRegister) {
+      return (
+        <>
+          <RegisterForm onSuccess={handleRegisterSuccess} onBackToLogin={() => setShowRegister(false)} />
+          <Toaster />
+        </>
+      )
+    }
+
+    return (
+      <>
+        <LoginForm onSuccess={handleLoginSuccess} onShowRegister={() => setShowRegister(true)} />
+        <Toaster />
+      </>
+    )
+  }
+
   return (
     <>
-      <MainLayout
-        currentPage={currentPage}
-        onPageChange={setCurrentPage}
-        onLogout={handleLogout}
-        userInfo={userInfo || undefined}
-      >
+      <MainLayout currentPage={currentPage} onPageChange={setCurrentPage} onLogout={handleLogout} userInfo={userInfo}>
         {renderCurrentPage()}
       </MainLayout>
       <Toaster />

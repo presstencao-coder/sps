@@ -7,55 +7,67 @@ const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"
 
 export async function POST(request: NextRequest) {
   try {
-    const { token: otpToken } = await request.json()
+    console.log("=== 2FA VERIFY API CHAMADA ===")
 
-    if (!otpToken) {
-      return NextResponse.json({ error: "Código não fornecido" }, { status: 400 })
-    }
-
+    // Get token from Authorization header
     const authHeader = request.headers.get("authorization")
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Token de autorização não fornecido" }, { status: 401 })
+      return NextResponse.json({ error: "Token de autorização necessário" }, { status: 401 })
     }
 
-    const jwtToken = authHeader.substring(7)
+    const authToken = authHeader.substring(7)
     let decoded: any
 
     try {
-      decoded = jwt.verify(jwtToken, JWT_SECRET)
+      decoded = jwt.verify(authToken, JWT_SECRET)
+      console.log("Token decodificado:", { userId: decoded.userId, email: decoded.email })
     } catch (error) {
-      return NextResponse.json({ error: "Token inválido" }, { status: 401 })
+      console.error("Token inválido:", error)
+      return NextResponse.json({ error: "Token inválido ou expirado" }, { status: 401 })
     }
 
+    // Get request body
+    const body = await request.json()
+    const { token } = body
+
+    if (!token || token.length !== 6) {
+      return NextResponse.json({ error: "Código de 6 dígitos é obrigatório" }, { status: 400 })
+    }
+
+    console.log("Verificando código:", token)
+
+    // Get user from database
     const user = await getUserById(decoded.userId)
-    if (!user || !user.two_factor_secret) {
-      return NextResponse.json({ error: "Usuário não encontrado ou 2FA não configurado" }, { status: 404 })
+    if (!user) {
+      return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 })
     }
 
-    // Set options for token verification with time window
-    authenticator.options = {
-      window: 2, // Allow 2 time steps before and after current time
-      step: 30, // 30 second time step
+    if (!user.two_factor_secret) {
+      return NextResponse.json({ error: "2FA não configurado" }, { status: 400 })
     }
 
     // Verify the token
     const isValid = authenticator.verify({
-      token: otpToken,
+      token,
       secret: user.two_factor_secret,
     })
 
+    console.log("Código válido:", isValid)
+
     if (!isValid) {
-      return NextResponse.json({ error: "Código inválido" }, { status: 400 })
+      return NextResponse.json({ error: "Código inválido ou expirado" }, { status: 400 })
     }
 
     // Enable 2FA for the user
     await updateUser2FA(user.id, user.two_factor_secret, true)
+    console.log("2FA habilitado para usuário:", user.email)
 
-    // Generate a new JWT token with 2FA verified
+    // Generate new token with 2FA verified
     const newToken = jwt.sign(
       {
         userId: user.id,
         email: user.email,
+        name: user.name,
         twoFactorVerified: true,
       },
       JWT_SECRET,
@@ -64,11 +76,22 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: "2FA verificado com sucesso",
       token: newToken,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        twoFactorEnabled: true,
+      },
     })
   } catch (error) {
-    console.error("Erro na verificação 2FA:", error)
-    return NextResponse.json({ error: "Erro interno do servidor" }, { status: 500 })
+    console.error("=== ERRO NA VERIFICAÇÃO 2FA ===", error)
+    return NextResponse.json(
+      {
+        error: "Erro interno do servidor",
+        details: error instanceof Error ? error.message : "Erro desconhecido",
+      },
+      { status: 500 },
+    )
   }
 }

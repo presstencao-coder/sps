@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -7,24 +9,32 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Switch } from "@/components/ui/switch"
-import { Separator } from "@/components/ui/separator"
+import { Badge } from "@/components/ui/badge"
+import { Shield, Key, Lock, AlertTriangle, CheckCircle, Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { Shield, Key, Lock, Unlock, Save, Loader2, AlertTriangle } from "lucide-react"
+
+interface UserSettings {
+  twoFactorEnabled: boolean
+}
 
 export function SettingsPage() {
-  const [loading, setLoading] = useState(false)
-  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false)
-  const [currentPassword, setCurrentPassword] = useState("")
-  const [newPassword, setNewPassword] = useState("")
-  const [confirmPassword, setConfirmPassword] = useState("")
+  const [settings, setSettings] = useState<UserSettings | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isChangingPassword, setIsChangingPassword] = useState(false)
+  const [isToggling2FA, setIsToggling2FA] = useState(false)
   const [error, setError] = useState("")
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  })
   const { toast } = useToast()
 
   useEffect(() => {
-    loadUserSettings()
+    loadSettings()
   }, [])
 
-  const loadUserSettings = async () => {
+  const loadSettings = async () => {
     try {
       const token = localStorage.getItem("token")
       if (!token) return
@@ -37,30 +47,34 @@ export function SettingsPage() {
 
       if (response.ok) {
         const data = await response.json()
-        setTwoFactorEnabled(data.twoFactorEnabled)
+        setSettings({
+          twoFactorEnabled: data.twoFactorEnabled,
+        })
+      } else {
+        setError("Erro ao carregar configurações")
       }
     } catch (error) {
       console.error("Erro ao carregar configurações:", error)
+      setError("Erro ao carregar configurações")
+    } finally {
+      setIsLoading(false)
     }
   }
 
-  const handleChangePassword = async () => {
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      setError("Todos os campos de senha são obrigatórios")
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setError("As senhas não coincidem")
       return
     }
 
-    if (newPassword !== confirmPassword) {
-      setError("Nova senha e confirmação não coincidem")
+    if (passwordForm.newPassword.length < 6) {
+      setError("A nova senha deve ter pelo menos 6 caracteres")
       return
     }
 
-    if (newPassword.length < 6) {
-      setError("Nova senha deve ter pelo menos 6 caracteres")
-      return
-    }
-
-    setLoading(true)
+    setIsChangingPassword(true)
     setError("")
 
     try {
@@ -74,19 +88,21 @@ export function SettingsPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          currentPassword,
-          newPassword,
+          currentPassword: passwordForm.currentPassword,
+          newPassword: passwordForm.newPassword,
         }),
       })
 
       if (response.ok) {
+        setPasswordForm({
+          currentPassword: "",
+          newPassword: "",
+          confirmPassword: "",
+        })
         toast({
           title: "Senha alterada",
           description: "Sua senha foi alterada com sucesso.",
         })
-        setCurrentPassword("")
-        setNewPassword("")
-        setConfirmPassword("")
       } else {
         const data = await response.json()
         setError(data.error || "Erro ao alterar senha")
@@ -95,224 +111,185 @@ export function SettingsPage() {
       console.error("Erro ao alterar senha:", error)
       setError("Erro ao alterar senha")
     } finally {
-      setLoading(false)
+      setIsChangingPassword(false)
     }
   }
 
-  const handleToggle2FA = async (enabled: boolean) => {
-    setLoading(true)
+  const handleToggle2FA = async () => {
+    if (!settings) return
+
+    setIsToggling2FA(true)
+    setError("")
 
     try {
       const token = localStorage.getItem("token")
       if (!token) return
 
-      if (enabled) {
-        // Redirect to 2FA setup
-        toast({
-          title: "Configurar 2FA",
-          description: "Redirecionando para configuração do 2FA...",
-        })
-        // Here you would typically redirect to 2FA setup
-      } else {
-        // Disable 2FA
-        const response = await fetch("/api/auth/2fa/disable", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        })
+      const endpoint = settings.twoFactorEnabled ? "/api/auth/2fa/disable" : "/api/auth/2fa/setup"
 
-        if (response.ok) {
-          setTwoFactorEnabled(false)
-          toast({
-            title: "2FA desabilitado",
-            description: "Autenticação de dois fatores foi desabilitada.",
-          })
-        } else {
-          toast({
-            title: "Erro",
-            description: "Erro ao desabilitar 2FA.",
-            variant: "destructive",
-          })
-        }
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        const newStatus = !settings.twoFactorEnabled
+        setSettings({ ...settings, twoFactorEnabled: newStatus })
+
+        toast({
+          title: newStatus ? "2FA Ativado" : "2FA Desativado",
+          description: newStatus
+            ? "Autenticação de dois fatores foi ativada."
+            : "Autenticação de dois fatores foi desativada.",
+        })
+      } else {
+        const data = await response.json()
+        setError(data.error || "Erro ao alterar 2FA")
       }
     } catch (error) {
       console.error("Erro ao alterar 2FA:", error)
-      toast({
-        title: "Erro",
-        description: "Erro ao alterar configuração de 2FA.",
-        variant: "destructive",
-      })
+      setError("Erro ao alterar 2FA")
     } finally {
-      setLoading(false)
+      setIsToggling2FA(false)
     }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    )
   }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      {/* Security Overview */}
-      <Card className="border-2 border-blue-200 dark:border-blue-800">
-        <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950">
-          <CardTitle className="flex items-center space-x-2">
-            <Shield className="w-6 h-6 text-blue-600" />
-            <span>Configurações de Segurança</span>
-          </CardTitle>
-          <CardDescription>Gerencie a segurança da sua conta e proteção de dados.</CardDescription>
-        </CardHeader>
-      </Card>
+      <div>
+        <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Configurações</h1>
+        <p className="text-slate-600 dark:text-slate-400">Gerencie sua segurança e preferências</p>
+      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid gap-6">
+        {/* Security Settings */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Shield className="h-5 w-5" />
+              <span>Segurança</span>
+            </CardTitle>
+            <CardDescription>Configure suas opções de segurança</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* 2FA Toggle */}
+            <div className="flex items-center justify-between p-4 border rounded-lg">
+              <div className="space-y-1">
+                <div className="flex items-center space-x-2">
+                  <h3 className="font-medium">Autenticação de Dois Fatores</h3>
+                  <Badge variant={settings?.twoFactorEnabled ? "default" : "secondary"}>
+                    {settings?.twoFactorEnabled ? "Ativo" : "Inativo"}
+                  </Badge>
+                </div>
+                <p className="text-sm text-gray-600">Adicione uma camada extra de segurança à sua conta</p>
+              </div>
+              <div className="flex items-center space-x-2">
+                {settings?.twoFactorEnabled ? (
+                  <CheckCircle className="h-5 w-5 text-green-500" />
+                ) : (
+                  <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                )}
+                <Switch
+                  checked={settings?.twoFactorEnabled || false}
+                  onCheckedChange={handleToggle2FA}
+                  disabled={isToggling2FA}
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Change Password */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
-              <Key className="w-5 h-5" />
+              <Key className="h-5 w-5" />
               <span>Alterar Senha</span>
             </CardTitle>
-            <CardDescription>Atualize sua senha para manter sua conta segura.</CardDescription>
+            <CardDescription>Mantenha sua conta segura com uma senha forte</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {error && (
-              <Alert variant="destructive">
-                <AlertTriangle className="w-4 h-4" />
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
+          <CardContent>
+            <form onSubmit={handlePasswordChange} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="currentPassword">Senha Atual</Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                  <Input
+                    id="currentPassword"
+                    type="password"
+                    value={passwordForm.currentPassword}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
+                    className="pl-10"
+                    required
+                    disabled={isChangingPassword}
+                  />
+                </div>
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="current-password">Senha Atual</Label>
-              <Input
-                id="current-password"
-                type="password"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                placeholder="Digite sua senha atual"
-                disabled={loading}
-              />
-            </div>
+              <div className="space-y-2">
+                <Label htmlFor="newPassword">Nova Senha</Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                  <Input
+                    id="newPassword"
+                    type="password"
+                    value={passwordForm.newPassword}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+                    className="pl-10"
+                    required
+                    disabled={isChangingPassword}
+                    minLength={6}
+                  />
+                </div>
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="new-password">Nova Senha</Label>
-              <Input
-                id="new-password"
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Digite sua nova senha"
-                disabled={loading}
-              />
-            </div>
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword">Confirmar Nova Senha</Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                  <Input
+                    id="confirmPassword"
+                    type="password"
+                    value={passwordForm.confirmPassword}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+                    className="pl-10"
+                    required
+                    disabled={isChangingPassword}
+                    minLength={6}
+                  />
+                </div>
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="confirm-password">Confirmar Nova Senha</Label>
-              <Input
-                id="confirm-password"
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Confirme sua nova senha"
-                disabled={loading}
-              />
-            </div>
-
-            <Separator />
-
-            <Button onClick={handleChangePassword} disabled={loading} className="w-full">
-              {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Alterando...
-                </>
-              ) : (
-                <>
-                  <Save className="w-4 h-4 mr-2" />
-                  Alterar Senha
-                </>
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
               )}
-            </Button>
-          </CardContent>
-        </Card>
 
-        {/* Two-Factor Authentication */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Lock className="w-5 h-5" />
-              <span>Autenticação de Dois Fatores</span>
-            </CardTitle>
-            <CardDescription>Adicione uma camada extra de segurança à sua conta com autenticação 2FA.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div className="space-y-1">
-                <p className="text-sm font-medium">Status do 2FA</p>
-                <p className="text-xs text-muted-foreground">
-                  {twoFactorEnabled ? "Sua conta está protegida com 2FA" : "2FA não está configurado"}
-                </p>
-              </div>
-              <div className="flex items-center space-x-2">
-                {twoFactorEnabled ? (
-                  <Lock className="w-4 h-4 text-green-600" />
+              <Button type="submit" disabled={isChangingPassword}>
+                {isChangingPassword ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Alterando...
+                  </>
                 ) : (
-                  <Unlock className="w-4 h-4 text-red-600" />
+                  "Alterar Senha"
                 )}
-                <Switch checked={twoFactorEnabled} onCheckedChange={handleToggle2FA} disabled={loading} />
-              </div>
-            </div>
-
-            <Separator />
-
-            <div className="space-y-3">
-              <h4 className="text-sm font-medium">Como funciona o 2FA:</h4>
-              <ul className="text-xs text-muted-foreground space-y-1">
-                <li>• Adiciona uma camada extra de segurança</li>
-                <li>• Requer um código do seu celular para fazer login</li>
-                <li>• Protege contra acesso não autorizado</li>
-                <li>• Compatível com Google Authenticator e similares</li>
-              </ul>
-            </div>
-
-            {!twoFactorEnabled && (
-              <Alert>
-                <Shield className="w-4 h-4" />
-                <AlertDescription>Recomendamos fortemente habilitar o 2FA para proteger sua conta.</AlertDescription>
-              </Alert>
-            )}
+              </Button>
+            </form>
           </CardContent>
         </Card>
       </div>
-
-      {/* Security Tips */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <AlertTriangle className="w-5 h-5 text-amber-600" />
-            <span>Dicas de Segurança</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <h4 className="text-sm font-semibold text-green-600">✓ Boas Práticas</h4>
-              <ul className="text-xs text-muted-foreground space-y-1">
-                <li>• Use senhas únicas e complexas</li>
-                <li>• Habilite autenticação de dois fatores</li>
-                <li>• Mantenha seu email seguro</li>
-                <li>• Faça logout em dispositivos públicos</li>
-              </ul>
-            </div>
-            <div className="space-y-2">
-              <h4 className="text-sm font-semibold text-red-600">✗ Evite</h4>
-              <ul className="text-xs text-muted-foreground space-y-1">
-                <li>• Compartilhar suas credenciais</li>
-                <li>• Usar a mesma senha em vários sites</li>
-                <li>• Acessar de redes públicas não seguras</li>
-                <li>• Ignorar notificações de segurança</li>
-              </ul>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   )
 }

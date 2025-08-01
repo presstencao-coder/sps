@@ -4,9 +4,15 @@ import type React from "react"
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Shield, Key, User, Settings, LogOut, Menu, X, Lock, Database } from "lucide-react"
-import { useToast } from "@/hooks/use-toast"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Key, User, Settings, LogOut, Menu, X, Shield } from "lucide-react"
 
 interface MainLayoutProps {
   children: React.ReactNode
@@ -22,48 +28,48 @@ interface MainLayoutProps {
 
 export function MainLayout({ children, currentPage, onPageChange, onLogout, userInfo }: MainLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const { toast } = useToast()
 
-  const menuItems = [
+  const navigation = [
     {
+      name: "Senhas",
       id: "passwords" as const,
-      label: "Minhas Senhas",
       icon: Key,
-      description: "Gerenciar senhas salvas",
+      description: "Gerencie suas senhas",
     },
     {
+      name: "Perfil",
       id: "profile" as const,
-      label: "Perfil",
       icon: User,
-      description: "Dados pessoais",
+      description: "Informações da conta",
     },
     {
+      name: "Configurações",
       id: "settings" as const,
-      label: "Configurações",
       icon: Settings,
       description: "Segurança e preferências",
     },
   ]
 
-  const handleLogout = () => {
-    toast({
-      title: "Logout realizado",
-      description: "Você foi desconectado com segurança.",
-    })
-    onLogout()
+  const getUserInitials = (name: string) => {
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2)
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
-      {/* Mobile sidebar overlay */}
+      {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
-        <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
+        <div className="fixed inset-0 z-40 bg-black bg-opacity-50 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
       {/* Sidebar */}
       <div
         className={`
-        fixed inset-y-0 left-0 z-50 w-72 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-r border-slate-200 dark:border-slate-700 transform transition-transform duration-300 ease-in-out lg:translate-x-0
+        fixed inset-y-0 left-0 z-50 w-64 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-r border-slate-200 dark:border-slate-700 transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
       `}
       >
@@ -71,8 +77,8 @@ export function MainLayout({ children, currentPage, onPageChange, onLogout, user
           {/* Header */}
           <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-700">
             <div className="flex items-center space-x-3">
-              <div className="flex items-center justify-center w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl">
-                <Shield className="w-6 h-6 text-white" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600">
+                <Shield className="h-6 w-6 text-white" />
               </div>
               <div>
                 <h1 className="text-xl font-bold text-slate-900 dark:text-white">SecureVault</h1>
@@ -80,34 +86,13 @@ export function MainLayout({ children, currentPage, onPageChange, onLogout, user
               </div>
             </div>
             <Button variant="ghost" size="sm" className="lg:hidden" onClick={() => setSidebarOpen(false)}>
-              <X className="w-5 h-5" />
+              <X className="h-5 w-5" />
             </Button>
           </div>
 
-          {/* User Info */}
-          {userInfo && (
-            <div className="p-6 border-b border-slate-200 dark:border-slate-700">
-              <div className="flex items-center space-x-3">
-                <div className="flex items-center justify-center w-12 h-12 bg-gradient-to-br from-emerald-400 to-cyan-500 rounded-full text-white font-semibold text-lg">
-                  {userInfo.name.charAt(0).toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">{userInfo.name}</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{userInfo.email}</p>
-                  <div className="flex items-center mt-1">
-                    <Badge variant={userInfo.twoFactorEnabled ? "default" : "secondary"} className="text-xs">
-                      <Lock className="w-3 h-3 mr-1" />
-                      2FA {userInfo.twoFactorEnabled ? "Ativo" : "Inativo"}
-                    </Badge>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Navigation */}
           <nav className="flex-1 p-4 space-y-2">
-            {menuItems.map((item) => {
+            {navigation.map((item) => {
               const Icon = item.icon
               const isActive = currentPage === item.id
 
@@ -119,62 +104,72 @@ export function MainLayout({ children, currentPage, onPageChange, onLogout, user
                     setSidebarOpen(false)
                   }}
                   className={`
-                    w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-left transition-all duration-200
+                    w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-all duration-200
                     ${
                       isActive
-                        ? "bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg shadow-blue-500/25"
-                        : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
+                        ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/25"
+                        : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
                     }
                   `}
                 >
-                  <Icon className={`w-5 h-5 ${isActive ? "text-white" : ""}`} />
-                  <div className="flex-1">
-                    <p className={`text-sm font-medium ${isActive ? "text-white" : ""}`}>{item.label}</p>
-                    <p className={`text-xs ${isActive ? "text-blue-100" : "text-slate-400"}`}>{item.description}</p>
+                  <Icon className={`h-5 w-5 ${isActive ? "text-white" : "text-slate-500"}`} />
+                  <div>
+                    <div className="font-medium">{item.name}</div>
+                    <div className={`text-xs ${isActive ? "text-blue-100" : "text-slate-500"}`}>{item.description}</div>
                   </div>
                 </button>
               )
             })}
           </nav>
 
-          {/* Footer */}
+          {/* User info */}
           <div className="p-4 border-t border-slate-200 dark:border-slate-700">
-            <Button
-              variant="ghost"
-              onClick={handleLogout}
-              className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
-            >
-              <LogOut className="w-5 h-5 mr-3" />
-              Sair da Conta
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="w-full justify-start p-3 h-auto">
+                  <Avatar className="h-10 w-10 mr-3">
+                    <AvatarImage src="/placeholder-user.jpg" />
+                    <AvatarFallback className="bg-gradient-to-br from-blue-600 to-indigo-600 text-white">
+                      {userInfo ? getUserInitials(userInfo.name) : "U"}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 text-left">
+                    <div className="font-medium text-slate-900 dark:text-white">{userInfo?.name || "Usuário"}</div>
+                    <div className="text-sm text-slate-500 dark:text-slate-400">
+                      {userInfo?.email || "email@exemplo.com"}
+                    </div>
+                  </div>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onClick={() => onPageChange("profile")}>
+                  <User className="mr-2 h-4 w-4" />
+                  Perfil
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onPageChange("settings")}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  Configurações
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={onLogout} className="text-red-600">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Sair
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </div>
 
       {/* Main content */}
-      <div className="lg:pl-72">
-        {/* Top bar */}
-        <div className="sticky top-0 z-30 flex items-center justify-between px-6 py-4 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200 dark:border-slate-700">
-          <div className="flex items-center space-x-4">
-            <Button variant="ghost" size="sm" className="lg:hidden" onClick={() => setSidebarOpen(true)}>
-              <Menu className="w-5 h-5" />
-            </Button>
-            <div>
-              <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
-                {menuItems.find((item) => item.id === currentPage)?.label}
-              </h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                {menuItems.find((item) => item.id === currentPage)?.description}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <Badge variant="outline" className="hidden sm:flex">
-              <Database className="w-3 h-3 mr-1" />
-              Dados Seguros
-            </Badge>
-          </div>
+      <div className="lg:pl-64">
+        {/* Mobile header */}
+        <div className="lg:hidden flex items-center justify-between p-4 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-b border-slate-200 dark:border-slate-700">
+          <Button variant="ghost" size="sm" onClick={() => setSidebarOpen(true)}>
+            <Menu className="h-5 w-5" />
+          </Button>
+          <h1 className="text-lg font-semibold text-slate-900 dark:text-white">SecureVault</h1>
+          <div className="w-10" /> {/* Spacer */}
         </div>
 
         {/* Page content */}

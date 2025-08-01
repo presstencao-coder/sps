@@ -1,22 +1,19 @@
 import { type NextRequest, NextResponse } from "next/server"
 import jwt from "jsonwebtoken"
 import { getUserById, updateUserPassword } from "@/lib/database"
-import { verifyPassword, hashPassword } from "@/lib/encryption"
 
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"
 
 export async function POST(request: NextRequest) {
   try {
-    console.log("=== CHANGE PASSWORD API ===")
-
     const authHeader = request.headers.get("authorization")
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Token não fornecido" }, { status: 401 })
+      return NextResponse.json({ error: "Token de autorização necessário" }, { status: 401 })
     }
 
     const token = authHeader.substring(7)
-
     let decoded: any
+
     try {
       decoded = jwt.verify(token, JWT_SECRET)
     } catch (error) {
@@ -31,7 +28,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (newPassword.length < 6) {
-      return NextResponse.json({ error: "Nova senha deve ter pelo menos 6 caracteres" }, { status: 400 })
+      return NextResponse.json({ error: "A nova senha deve ter pelo menos 6 caracteres" }, { status: 400 })
     }
 
     const user = await getUserById(decoded.userId)
@@ -39,17 +36,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 })
     }
 
-    // Verify current password
-    const isCurrentPasswordValid = verifyPassword(currentPassword, user.password_hash)
-    if (!isCurrentPasswordValid) {
+    // Verify current password (for demo, we're using simple comparison)
+    if (user.password_hash !== currentPassword) {
       return NextResponse.json({ error: "Senha atual incorreta" }, { status: 400 })
     }
 
-    // Hash new password
-    const hashedNewPassword = hashPassword(newPassword)
-
-    // Update password
-    await updateUserPassword(decoded.userId, hashedNewPassword)
+    // Update password (for demo, storing directly)
+    await updateUserPassword(decoded.userId, newPassword)
 
     return NextResponse.json({ success: true, message: "Senha alterada com sucesso" })
   } catch (error) {

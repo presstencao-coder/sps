@@ -1,15 +1,17 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
-import { useToast } from "@/hooks/use-toast"
 import { User, Mail, Calendar, Shield, Save, Loader2 } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
 
 interface UserProfile {
   id: string
@@ -22,11 +24,13 @@ interface UserProfile {
 
 export function ProfilePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [name, setName] = useState("")
-  const [email, setEmail] = useState("")
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState("")
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+  })
   const { toast } = useToast()
 
   useEffect(() => {
@@ -47,8 +51,10 @@ export function ProfilePage() {
       if (response.ok) {
         const data = await response.json()
         setProfile(data)
-        setName(data.name)
-        setEmail(data.email)
+        setFormData({
+          name: data.name,
+          email: data.email,
+        })
       } else {
         setError("Erro ao carregar perfil")
       }
@@ -56,17 +62,13 @@ export function ProfilePage() {
       console.error("Erro ao carregar perfil:", error)
       setError("Erro ao carregar perfil")
     } finally {
-      setLoading(false)
+      setIsLoading(false)
     }
   }
 
-  const handleSave = async () => {
-    if (!name.trim() || !email.trim()) {
-      setError("Nome e email são obrigatórios")
-      return
-    }
-
-    setSaving(true)
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsSaving(true)
     setError("")
 
     try {
@@ -79,15 +81,16 @@ export function ProfilePage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ name, email }),
+        body: JSON.stringify(formData),
       })
 
       if (response.ok) {
+        const updatedProfile = await response.json()
+        setProfile(updatedProfile)
         toast({
           title: "Perfil atualizado",
           description: "Suas informações foram salvas com sucesso.",
         })
-        await loadProfile()
       } else {
         const data = await response.json()
         setError(data.error || "Erro ao salvar perfil")
@@ -96,180 +99,144 @@ export function ProfilePage() {
       console.error("Erro ao salvar perfil:", error)
       setError("Erro ao salvar perfil")
     } finally {
-      setSaving(false)
+      setIsSaving(false)
     }
   }
 
-  if (loading) {
+  const getUserInitials = (name: string) => {
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2)
+  }
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString("pt-BR", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    })
+  }
+
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="flex items-center space-x-2">
-          <Loader2 className="h-6 w-6 animate-spin" />
-          <span>Carregando perfil...</span>
-        </div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       </div>
     )
   }
 
   if (!profile) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Alert>
-          <AlertDescription>Erro ao carregar perfil do usuário.</AlertDescription>
-        </Alert>
+      <div className="text-center py-12">
+        <p className="text-gray-500">Erro ao carregar perfil</p>
       </div>
     )
   }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      {/* Profile Header */}
-      <div className="bg-gradient-to-r from-blue-500 to-indigo-600 rounded-2xl p-8 text-white">
-        <div className="flex items-center space-x-6">
-          <div className="flex items-center justify-center w-20 h-20 bg-white/20 rounded-full text-2xl font-bold">
-            {profile.name.charAt(0).toUpperCase()}
-          </div>
-          <div className="flex-1">
-            <h1 className="text-3xl font-bold">{profile.name}</h1>
-            <p className="text-blue-100 text-lg">{profile.email}</p>
-            <div className="flex items-center space-x-4 mt-3">
-              <Badge variant="secondary" className="bg-white/20 text-white border-white/30">
-                <Shield className="w-3 h-3 mr-1" />
-                2FA {profile.twoFactorEnabled ? "Ativo" : "Inativo"}
-              </Badge>
-              <span className="text-blue-100 text-sm">
-                Membro desde {new Date(profile.createdAt).toLocaleDateString("pt-BR")}
-              </span>
-            </div>
-          </div>
-        </div>
+      <div>
+        <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Meu Perfil</h1>
+        <p className="text-slate-600 dark:text-slate-400">Gerencie suas informações pessoais</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Edit Profile Form */}
-        <div className="lg:col-span-2">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <User className="w-5 h-5" />
-                <span>Informações Pessoais</span>
-              </CardTitle>
-              <CardDescription>Atualize suas informações básicas de perfil.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
+      <div className="grid gap-6 md:grid-cols-3">
+        {/* Profile Overview */}
+        <Card className="md:col-span-1">
+          <CardHeader className="text-center">
+            <Avatar className="h-24 w-24 mx-auto mb-4">
+              <AvatarImage src="/placeholder-user.jpg" />
+              <AvatarFallback className="bg-gradient-to-br from-blue-600 to-indigo-600 text-white text-xl">
+                {getUserInitials(profile.name)}
+              </AvatarFallback>
+            </Avatar>
+            <CardTitle className="text-xl">{profile.name}</CardTitle>
+            <CardDescription>{profile.email}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-600">2FA</span>
+              <Badge variant={profile.twoFactorEnabled ? "default" : "secondary"}>
+                {profile.twoFactorEnabled ? "Ativo" : "Inativo"}
+              </Badge>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center space-x-2 text-sm text-gray-600">
+                <Calendar className="h-4 w-4" />
+                <span>Criado em {formatDate(profile.createdAt)}</span>
+              </div>
+              <div className="flex items-center space-x-2 text-sm text-gray-600">
+                <Shield className="h-4 w-4" />
+                <span>Última atualização: {formatDate(profile.updatedAt)}</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Edit Profile */}
+        <Card className="md:col-span-2">
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <User className="h-5 w-5" />
+              <span>Informações Pessoais</span>
+            </CardTitle>
+            <CardDescription>Atualize suas informações básicas</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSave} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Nome Completo</Label>
+                <Input
+                  id="name"
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  required
+                  disabled={isSaving}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                  <Input
+                    id="email"
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    className="pl-10"
+                    required
+                    disabled={isSaving}
+                  />
+                </div>
+              </div>
+
               {error && (
                 <Alert variant="destructive">
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Nome Completo</Label>
-                  <Input
-                    id="name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Seu nome completo"
-                    disabled={saving}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="seu@email.com"
-                    disabled={saving}
-                  />
-                </div>
-              </div>
-
-              <Separator />
-
-              <div className="flex justify-end">
-                <Button onClick={handleSave} disabled={saving}>
-                  {saving ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Salvando...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4 mr-2" />
-                      Salvar Alterações
-                    </>
-                  )}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Account Stats */}
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Mail className="w-5 h-5" />
-                <span>Informações da Conta</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">ID da Conta</span>
-                <span className="text-sm font-mono">{profile.id.slice(0, 8)}...</span>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Status 2FA</span>
-                <Badge variant={profile.twoFactorEnabled ? "default" : "secondary"}>
-                  {profile.twoFactorEnabled ? "Ativo" : "Inativo"}
-                </Badge>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Criado em</span>
-                <span className="text-sm">{new Date(profile.createdAt).toLocaleDateString("pt-BR")}</span>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Atualizado em</span>
-                <span className="text-sm">{new Date(profile.updatedAt).toLocaleDateString("pt-BR")}</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Calendar className="w-5 h-5" />
-                <span>Atividade Recente</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="flex items-center space-x-3">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <div className="flex-1">
-                    <p className="text-sm">Login realizado</p>
-                    <p className="text-xs text-muted-foreground">Hoje</p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-3">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                  <div className="flex-1">
-                    <p className="text-sm">Perfil visualizado</p>
-                    <p className="text-xs text-muted-foreground">Agora</p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+              <Button type="submit" disabled={isSaving} className="w-full">
+                {isSaving ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  <>
+                    <Save className="mr-2 h-4 w-4" />
+                    Salvar Alterações
+                  </>
+                )}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )
