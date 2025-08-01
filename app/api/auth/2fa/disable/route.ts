@@ -6,45 +6,48 @@ const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"
 
 export async function POST(request: NextRequest) {
   try {
-    console.log("=== DISABLE 2FA API ===")
+    console.log("=== DISABLE 2FA ===")
 
     const authHeader = request.headers.get("authorization")
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      console.log("Token não fornecido")
       return NextResponse.json({ error: "Token não fornecido" }, { status: 401 })
     }
 
     const token = authHeader.substring(7)
+    let decoded: any
 
     try {
-      const decoded = jwt.verify(token, JWT_SECRET) as any
+      decoded = jwt.verify(token, JWT_SECRET)
       console.log("Token decodificado:", decoded)
-
-      const db = getDatabase()
-      const userIndex = db.users.findIndex((u) => u.id === decoded.userId)
-
-      if (userIndex === -1) {
-        return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 })
-      }
-
-      // Disable 2FA
-      db.users[userIndex] = {
-        ...db.users[userIndex],
-        twoFactorEnabled: false,
-        twoFactorSecret: undefined,
-      }
-
-      console.log("2FA desabilitado para usuário:", db.users[userIndex].email)
-
-      return NextResponse.json({
-        success: true,
-        message: "2FA desabilitado com sucesso",
-      })
-    } catch (jwtError) {
-      console.error("Erro ao verificar token:", jwtError)
+    } catch (error) {
+      console.error("Token inválido:", error)
       return NextResponse.json({ error: "Token inválido" }, { status: 401 })
     }
-  } catch (error) {
-    console.error("Erro na API de desabilitar 2FA:", error)
+
+    const db = getDatabase()
+
+    // Desabilitar 2FA para o usuário
+    const updateResult = db
+      .prepare(`
+      UPDATE users 
+      SET two_factor_enabled = 0, two_factor_secret = NULL 
+      WHERE id = ?
+    `)
+      .run(decoded.userId)
+
+    if (updateResult.changes === 0) {
+      return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 })
+    }
+
+    console.log("2FA desabilitado com sucesso")
+
+    return NextResponse.json({
+      success: true,
+      message: "Autenticação de dois fatores desabilitada",
+    })
+  } catch (error: any) {
+    console.error("=== ERRO NO DISABLE 2FA ===", error)
     return NextResponse.json({ error: "Erro interno do servidor" }, { status: 500 })
   }
 }

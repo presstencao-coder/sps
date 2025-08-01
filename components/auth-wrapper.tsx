@@ -50,6 +50,7 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
 
       if (payload.twoFactorVerified === true) {
         setIsAuthenticated(true)
+        setUserToken(token)
         // Load user info
         await loadUserInfo(token)
       } else {
@@ -87,12 +88,13 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
     }
   }
 
-  const handleLoginSuccess = (token: string, requiresTwoFactor: boolean) => {
-    console.log("Login success:", { requiresTwoFactor })
+  const handleLoginSuccess = (userData: any) => {
+    console.log("Login success:", userData)
+    const token = userData.token
     setUserToken(token)
     localStorage.setItem("token", token)
 
-    if (requiresTwoFactor) {
+    if (userData.requiresTwoFactor) {
       setShowTwoFactor(true)
     } else {
       setIsAuthenticated(true)
@@ -110,7 +112,8 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
     }
   }
 
-  const handleRegisterSuccess = (token: string) => {
+  const handleRegisterSuccess = (userData: any) => {
+    const token = userData.token
     setUserToken(token)
     localStorage.setItem("token", token)
     setShowRegister(false)
@@ -164,7 +167,7 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
     if (showRegister) {
       return (
         <>
-          <RegisterForm onSuccess={handleRegisterSuccess} onBackToLogin={() => setShowRegister(false)} />
+          <RegisterForm onRegisterSuccess={handleRegisterSuccess} onSwitchToLogin={() => setShowRegister(false)} />
           <Toaster />
         </>
       )
@@ -172,7 +175,7 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
 
     return (
       <>
-        <LoginForm onSuccess={handleLoginSuccess} onShowRegister={() => setShowRegister(true)} />
+        <LoginForm onLoginSuccess={handleLoginSuccess} onSwitchToRegister={() => setShowRegister(true)} />
         <Toaster />
       </>
     )

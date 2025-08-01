@@ -1,28 +1,24 @@
 "use client"
-
-import type React from "react"
-
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Shield, Smartphone } from "lucide-react"
-import { useToast } from "@/hooks/use-toast"
+import { Shield, Smartphone, QrCode } from "lucide-react"
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
 
 interface TwoFactorAuthProps {
   onComplete: () => void
 }
 
 export function TwoFactorAuth({ onComplete }: TwoFactorAuthProps) {
+  const [step, setStep] = useState<"setup" | "verify">("setup")
   const [qrCode, setQrCode] = useState("")
   const [secret, setSecret] = useState("")
   const [code, setCode] = useState("")
+  const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isSetupLoading, setIsSetupLoading] = useState(true)
-  const [error, setError] = useState("")
-  const { toast } = useToast()
 
   useEffect(() => {
     setupTwoFactor()
@@ -34,13 +30,13 @@ export function TwoFactorAuth({ onComplete }: TwoFactorAuthProps) {
       const token = localStorage.getItem("token")
 
       if (!token) {
-        throw new Error("Token não encontrado")
+        setError("Token não encontrado")
+        return
       }
 
       const response = await fetch("/api/auth/2fa/setup", {
-        method: "POST",
+        method: "GET",
         headers: {
-          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
       })
@@ -49,41 +45,47 @@ export function TwoFactorAuth({ onComplete }: TwoFactorAuthProps) {
 
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.error || "Erro ao configurar 2FA")
+        console.error("Erro no setup 2FA:", errorData)
+        setError(errorData.error || "Erro ao configurar 2FA")
+        return
       }
 
       const data = await response.json()
       console.log("Setup 2FA data:", data)
 
-      if (data.success) {
+      if (data.qrCode && data.secret) {
         setQrCode(data.qrCode)
         setSecret(data.secret)
-        toast({
-          title: "2FA Configurado",
-          description: "Escaneie o QR Code com seu app autenticador",
-        })
+        console.log("QR Code e secret configurados com sucesso")
       } else {
-        throw new Error(data.error || "Erro ao configurar 2FA")
+        console.error("Dados de 2FA incompletos:", data)
+        setError("Dados de configuração incompletos")
       }
     } catch (error: any) {
-      console.error("Erro ao configurar 2FA:", error)
-      setError(error.message || "Erro ao configurar autenticação de dois fatores")
+      console.error("=== ERRO NO SETUP 2FA ===", error)
+      setError("Erro ao configurar autenticação de dois fatores")
     } finally {
       setIsSetupLoading(false)
     }
   }
 
-  const handleVerify = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleVerifyCode = async () => {
+    if (code.length !== 6) {
+      setError("Código deve ter 6 dígitos")
+      return
+    }
+
     setIsLoading(true)
     setError("")
 
     try {
       console.log("=== VERIFICANDO CÓDIGO 2FA ===")
-      const token = localStorage.getItem("token")
+      console.log("Código:", code)
 
+      const token = localStorage.getItem("token")
       if (!token) {
-        throw new Error("Token não encontrado")
+        setError("Token não encontrado")
+        return
       }
 
       const response = await fetch("/api/auth/2fa/verify", {
@@ -101,35 +103,38 @@ export function TwoFactorAuth({ onComplete }: TwoFactorAuthProps) {
       console.log("Verify 2FA data:", data)
 
       if (response.ok && data.success) {
+        console.log("2FA verificado com sucesso")
         // Atualizar token com 2FA verificado
-        localStorage.setItem("token", data.token)
-
-        toast({
-          title: "2FA Verificado",
-          description: "Autenticação de dois fatores configurada com sucesso!",
-        })
-
+        if (data.token) {
+          localStorage.setItem("token", data.token)
+        }
         onComplete()
       } else {
-        throw new Error(data.error || "Código inválido")
+        console.error("Verificação 2FA falhou:", data.error)
+        setError(data.error || "Código inválido")
+        setCode("") // Limpar código
       }
     } catch (error: any) {
-      console.error("Erro ao verificar 2FA:", error)
-      setError(error.message || "Erro ao verificar código")
+      console.error("=== ERRO NA VERIFICAÇÃO 2FA ===", error)
+      setError("Erro ao verificar código")
+      setCode("")
     } finally {
       setIsLoading(false)
     }
   }
 
+  const handleCodeChange = (value: string) => {
+    setCode(value)
+    setError("")
+  }
+
   if (isSetupLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4">
-        <Card className="w-full max-w-md">
-          <CardContent className="flex flex-col items-center justify-center p-8">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-            <p className="text-slate-600 dark:text-slate-400">Configurando autenticação...</p>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-slate-600">Configurando autenticação...</p>
+        </div>
       </div>
     )
   }
@@ -142,71 +147,101 @@ export function TwoFactorAuth({ onComplete }: TwoFactorAuthProps) {
             <Shield className="h-6 w-6 text-green-600 dark:text-green-400" />
           </div>
           <CardTitle className="text-2xl">Autenticação de Dois Fatores</CardTitle>
-          <CardDescription>Configure seu app autenticador para maior segurança</CardDescription>
+          <CardDescription>
+            {step === "setup" ? "Configure seu aplicativo autenticador" : "Digite o código do seu aplicativo"}
+          </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
-          {/* QR Code Section */}
-          <div className="text-center space-y-4">
-            <div className="flex items-center justify-center space-x-2 text-sm text-slate-600 dark:text-slate-400">
-              <Smartphone className="h-4 w-4" />
-              <span>Escaneie com Google Authenticator ou similar</span>
-            </div>
-
-            {qrCode && (
-              <div className="flex justify-center p-4 bg-white dark:bg-slate-800 rounded-lg border">
-                <div dangerouslySetInnerHTML={{ __html: qrCode }} />
+        <CardContent>
+          {step === "setup" ? (
+            <div className="space-y-6">
+              <div className="text-center space-y-4">
+                <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
+                  <Smartphone size={16} />
+                  <span>1. Abra seu app autenticador</span>
+                </div>
+                <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
+                  <QrCode size={16} />
+                  <span>2. Escaneie o QR Code abaixo</span>
+                </div>
               </div>
-            )}
 
-            {secret && (
-              <div className="text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 p-3 rounded-lg">
-                <p className="font-medium mb-1">Chave manual (se não conseguir escanear):</p>
-                <code className="break-all">{secret}</code>
-              </div>
-            )}
-          </div>
+              {qrCode ? (
+                <div className="flex justify-center">
+                  <div className="bg-white p-4 rounded-lg shadow-sm">
+                    <img
+                      src={qrCode || "/placeholder.svg"}
+                      alt="QR Code para configuração 2FA"
+                      className="w-48 h-48"
+                      onError={(e) => {
+                        console.error("Erro ao carregar QR Code")
+                        setError("Erro ao carregar QR Code")
+                      }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="flex justify-center">
+                  <div className="w-48 h-48 bg-gray-200 rounded-lg flex items-center justify-center">
+                    <p className="text-gray-500 text-sm">Carregando QR Code...</p>
+                  </div>
+                </div>
+              )}
 
-          {/* Verification Form */}
-          <form onSubmit={handleVerify} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="code">Código de Verificação</Label>
-              <Input
-                id="code"
-                type="text"
-                value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                placeholder="000000"
-                maxLength={6}
-                className="text-center text-lg tracking-widest"
-                required
-                disabled={isLoading}
-              />
-              <p className="text-xs text-slate-500 dark:text-slate-400 text-center">
-                Digite o código de 6 dígitos do seu app autenticador
-              </p>
+              {secret && (
+                <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg">
+                  <Label className="text-xs text-gray-600">Código manual (se não conseguir escanear):</Label>
+                  <p className="font-mono text-sm break-all mt-1">{secret}</p>
+                </div>
+              )}
+
+              <Button onClick={() => setStep("verify")} className="w-full" disabled={!qrCode}>
+                Continuar para Verificação
+              </Button>
             </div>
+          ) : (
+            <div className="space-y-6">
+              <div className="text-center">
+                <p className="text-sm text-gray-600 mb-4">
+                  Digite o código de 6 dígitos do seu aplicativo autenticador
+                </p>
 
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
+                <div className="flex justify-center">
+                  <InputOTP maxLength={6} value={code} onChange={handleCodeChange} disabled={isLoading}>
+                    <InputOTPGroup>
+                      <InputOTPSlot index={0} />
+                      <InputOTPSlot index={1} />
+                      <InputOTPSlot index={2} />
+                      <InputOTPSlot index={3} />
+                      <InputOTPSlot index={4} />
+                      <InputOTPSlot index={5} />
+                    </InputOTPGroup>
+                  </InputOTP>
+                </div>
+              </div>
 
-            <Button type="submit" className="w-full" disabled={isLoading || code.length !== 6}>
-              {isLoading ? "Verificando..." : "Verificar e Continuar"}
-            </Button>
-          </form>
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
 
-          {/* Instructions */}
-          <div className="text-xs text-slate-500 dark:text-slate-400 space-y-2">
-            <p className="font-medium">Como configurar:</p>
-            <ol className="list-decimal list-inside space-y-1 ml-2">
-              <li>Baixe o Google Authenticator ou similar</li>
-              <li>Escaneie o QR Code acima</li>
-              <li>Digite o código de 6 dígitos gerado</li>
-              <li>Clique em "Verificar e Continuar"</li>
-            </ol>
-          </div>
+              <div className="space-y-3">
+                <Button onClick={handleVerifyCode} className="w-full" disabled={isLoading || code.length !== 6}>
+                  {isLoading ? "Verificando..." : "Verificar Código"}
+                </Button>
+
+                <Button variant="outline" onClick={() => setStep("setup")} className="w-full" disabled={isLoading}>
+                  Voltar para QR Code
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {error && step === "setup" && (
+            <Alert variant="destructive" className="mt-4">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
         </CardContent>
       </Card>
     </div>
