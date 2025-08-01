@@ -8,7 +8,7 @@ const __dirname = path.dirname(__filename)
 
 async function setupDatabase() {
   try {
-    const dbPath = process.env.SQLITE_PATH || "./database.sqlite"
+    const dbPath = process.env.SQLITE_PATH || path.join(process.cwd(), "database.sqlite")
 
     console.log("🔧 Configurando banco de dados SQLite...")
     console.log(`📁 Caminho do banco: ${dbPath}`)
@@ -20,7 +20,13 @@ async function setupDatabase() {
       console.log(`📁 Diretório criado: ${dbDir}`)
     }
 
-    const db = new sqlite3.Database(dbPath)
+    const db = new sqlite3.Database(dbPath, (err) => {
+      if (err) {
+        console.error("❌ Erro ao abrir banco:", err)
+        return
+      }
+      console.log("✅ Banco SQLite aberto com sucesso!")
+    })
 
     // SQL para criar tabelas
     const createTablesSQL = `
@@ -69,6 +75,13 @@ async function setupDatabase() {
           datetime('now'),
           datetime('now')
       );
+
+      -- Inserir algumas senhas de exemplo
+      INSERT OR IGNORE INTO passwords (id, user_id, title, username, encrypted_password, url, category, notes, created_at, updated_at)
+      VALUES 
+      ('pass-1', 'user-1', 'Gmail', 'admin@gmail.com', 'encrypted_password_here', 'https://gmail.com', 'email', 'Conta principal do Gmail', datetime('now'), datetime('now')),
+      ('pass-2', 'user-1', 'Facebook', 'admin@example.com', 'encrypted_password_here', 'https://facebook.com', 'social', 'Rede social principal', datetime('now'), datetime('now')),
+      ('pass-3', 'user-1', 'Banco do Brasil', 'admin123', 'encrypted_password_here', 'https://bb.com.br', 'finance', 'Conta bancária principal', datetime('now'), datetime('now'));
     `
 
     return new Promise((resolve, reject) => {
@@ -97,8 +110,12 @@ async function setupDatabase() {
                 reject(err)
               } else {
                 console.log("🎉 Banco de dados configurado com sucesso!")
-                console.log("📧 Login: admin@example.com")
-                console.log("🔑 Senha: admin123")
+                console.log("")
+                console.log("📧 Credenciais de teste:")
+                console.log("   Email: admin@example.com")
+                console.log("   Senha: admin123")
+                console.log("")
+                console.log("🚀 Execute 'npm run dev' para iniciar a aplicação")
                 resolve()
               }
             })
