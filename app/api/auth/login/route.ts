@@ -1,83 +1,79 @@
 import { type NextRequest, NextResponse } from "next/server"
-import bcrypt from "bcryptjs"
 import jwt from "jsonwebtoken"
-import { authenticator } from "otplib"
 import { getUserByEmail } from "@/lib/database"
+import { verifyPassword } from "@/lib/encryption"
 
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, password, twoFactorCode } = await request.json()
+    console.log("=== LOGIN API CHAMADA ===")
+
+    let body
+    try {
+      body = await request.json()
+    } catch (error) {
+      console.error("Erro ao parsear JSON:", error)
+      return NextResponse.json({ error: "Dados inválidos" }, { status: 400 })
+    }
+
+    const { email, password, twoFactorCode } = body
+    console.log("Login attempt for:", email)
 
     if (!email || !password) {
       return NextResponse.json({ error: "Email e senha são obrigatórios" }, { status: 400 })
     }
 
     // Find user by email
-    const user = await getUserByEmail(email)
+    let user
+    try {
+      user = await getUserByEmail(email)
+      console.log("User found:", user ? "Yes" : "No")
+    } catch (error) {
+      console.error("Erro ao buscar usuário:", error)
+      return NextResponse.json({ error: "Erro ao buscar usuário" }, { status: 500 })
+    }
+
     if (!user) {
       return NextResponse.json({ error: "Credenciais inválidas" }, { status: 401 })
     }
 
     // Verify password
-    const isPasswordValid = bcrypt.compareSync(password, user.password_hash)
+    let isPasswordValid = false
+    try {
+      isPasswordValid = verifyPassword(password, user.password_hash)
+      console.log("Password valid:", isPasswordValid)
+    } catch (error) {
+      console.error("Erro ao verificar senha:", error)
+      return NextResponse.json({ error: "Erro na verificação de senha" }, { status: 500 })
+    }
+
     if (!isPasswordValid) {
       return NextResponse.json({ error: "Credenciais inválidas" }, { status: 401 })
     }
 
-    // Check if 2FA is enabled and configured
-    if (user.two_factor_enabled && user.two_factor_secret) {
-      if (!twoFactorCode) {
-        // Generate temporary token for 2FA setup
-        const tempToken = jwt.sign(
-          {
-            userId: user.id,
-            email: user.email,
-            twoFactorVerified: false,
-            temp: true,
-          },
-          JWT_SECRET,
-          { expiresIn: "10m" },
-        )
-
-        return NextResponse.json({
-          requiresTwoFactor: true,
-          token: tempToken,
-          message: "Código 2FA necessário",
-        })
-      }
-
-      // Verify 2FA code
-      authenticator.options = {
-        window: 2,
-        step: 30,
-      }
-
-      const isValidTwoFactor = authenticator.verify({
-        token: twoFactorCode,
-        secret: user.two_factor_secret,
-      })
-
-      if (!isValidTwoFactor) {
-        return NextResponse.json({ error: "Código 2FA inválido" }, { status: 401 })
-      }
+    // Generate JWT token
+    let token
+    try {
+      token = jwt.sign(
+        {
+          userId: user.id,
+          email: user.email,
+          name: user.name,
+          twoFactorVerified: false, // Will be updated after 2FA
+        },
+        JWT_SECRET,
+        { expiresIn: "24h" },
+      )
+      console.log("Token generated successfully")
+    } catch (error) {
+      console.error("Erro ao gerar token:", error)
+      return NextResponse.json({ error: "Erro ao gerar token" }, { status: 500 })
     }
 
-    // Generate final JWT token
-    const token = jwt.sign(
-      {
-        userId: user.id,
-        email: user.email,
-        name: user.name,
-        twoFactorVerified: user.two_factor_enabled ? true : false,
-      },
-      JWT_SECRET,
-      { expiresIn: "24h" },
-    )
-
-    // If user doesn't have 2FA enabled, they need to set it up
+    // Check if user needs to set up 2FA
     const needsTwoFactorSetup = !user.two_factor_enabled
+    console.log("Needs 2FA setup:", needsTwoFactorSetup)
 
     return NextResponse.json({
       success: true,
@@ -91,7 +87,13 @@ export async function POST(request: NextRequest) {
       },
     })
   } catch (error) {
-    console.error("Erro no login:", error)
-    return NextResponse.json({ error: "Erro interno do servidor" }, { status: 500 })
+    console.error("=== ERRO GERAL NO LOGIN ===", error)
+    return NextResponse.json(
+      {
+        error: "Erro interno do servidor",
+        details: process.env.NODE_ENV === "development" ? error.message : undefined,
+      },
+      { status: 500 },
+    )
   }
 }

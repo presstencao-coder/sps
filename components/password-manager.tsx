@@ -38,6 +38,8 @@ export function PasswordManager() {
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [editingPassword, setEditingPassword] = useState<PasswordEntry | null>(null)
   const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(new Set())
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
 
   const categories = ["website", "app", "email", "social", "banking", "work", "other"]
 
@@ -45,15 +47,41 @@ export function PasswordManager() {
     loadPasswords()
   }, [])
 
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem("token")
+    return {
+      "Content-Type": "application/json",
+      ...(token && { Authorization: `Bearer ${token}` }),
+    }
+  }
+
   const loadPasswords = async () => {
     try {
-      const response = await fetch("/api/passwords")
+      setLoading(true)
+      setError("")
+
+      console.log("Carregando senhas...")
+
+      const response = await fetch("/api/passwords", {
+        headers: getAuthHeaders(),
+      })
+
+      console.log("Response status:", response.status)
+
       if (response.ok) {
         const data = await response.json()
+        console.log("Senhas carregadas:", data.length)
         setPasswords(data)
+      } else {
+        const errorData = await response.json()
+        console.error("Erro ao carregar senhas:", errorData)
+        setError(errorData.error || "Erro ao carregar senhas")
       }
     } catch (error) {
       console.error("Erro ao carregar senhas:", error)
+      setError("Erro de conexão")
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -85,6 +113,29 @@ export function PasswordManager() {
     }
   }
 
+  const deletePassword = async (id: string) => {
+    if (!confirm("Tem certeza que deseja deletar esta senha?")) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/passwords/${id}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      })
+
+      if (response.ok) {
+        await loadPasswords() // Recarregar lista
+      } else {
+        const errorData = await response.json()
+        setError(errorData.error || "Erro ao deletar senha")
+      }
+    } catch (error) {
+      console.error("Erro ao deletar senha:", error)
+      setError("Erro de conexão")
+    }
+  }
+
   const getCategoryIcon = (category: string) => {
     switch (category) {
       case "website":
@@ -107,6 +158,15 @@ export function PasswordManager() {
       other: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300",
     }
     return colors[category as keyof typeof colors] || colors.other
+  }
+
+  if (loading && passwords.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <span className="ml-2">Carregando senhas...</span>
+      </div>
+    )
   }
 
   return (
@@ -159,6 +219,26 @@ export function PasswordManager() {
         </div>
       </div>
 
+      {/* Mostrar erro se houver */}
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>
+            {error}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setError("")
+                loadPasswords()
+              }}
+              className="ml-2"
+            >
+              Tentar novamente
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Lista de senhas */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {filteredPasswords.map((password) => (
@@ -205,7 +285,12 @@ export function PasswordManager() {
                   <Button size="sm" variant="ghost" onClick={() => setEditingPassword(password)}>
                     <Edit className="w-4 h-4" />
                   </Button>
-                  <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-red-600 hover:text-red-700"
+                    onClick={() => deletePassword(password.id)}
+                  >
                     <Trash2 className="w-4 h-4" />
                   </Button>
                 </div>
@@ -215,7 +300,7 @@ export function PasswordManager() {
         ))}
       </div>
 
-      {filteredPasswords.length === 0 && (
+      {filteredPasswords.length === 0 && !loading && (
         <div className="text-center py-12">
           <p className="text-gray-500 dark:text-gray-400">
             {searchTerm || selectedCategory !== "all"
@@ -262,6 +347,14 @@ function PasswordForm({ password, onSuccess, onCancel }: PasswordFormProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
 
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem("token")
+    return {
+      "Content-Type": "application/json",
+      ...(token && { Authorization: `Bearer ${token}` }),
+    }
+  }
+
   const generatePassword = () => {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*"
     let result = ""
@@ -277,22 +370,29 @@ function PasswordForm({ password, onSuccess, onCancel }: PasswordFormProps) {
     setError("")
 
     try {
+      console.log("Salvando senha:", formData.title)
+
       const url = password ? `/api/passwords/${password.id}` : "/api/passwords"
       const method = password ? "PUT" : "POST"
 
       const response = await fetch(url, {
         method,
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify(formData),
       })
 
+      console.log("Response status:", response.status)
+
       if (response.ok) {
+        console.log("Senha salva com sucesso")
         onSuccess()
       } else {
         const data = await response.json()
+        console.error("Erro ao salvar:", data)
         setError(data.error || "Erro ao salvar senha")
       }
     } catch (error) {
+      console.error("Erro de conexão:", error)
       setError("Erro de conexão")
     } finally {
       setIsLoading(false)

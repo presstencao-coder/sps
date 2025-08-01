@@ -10,11 +10,11 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Eye, EyeOff, Shield } from "lucide-react"
 
 interface LoginFormProps {
-  onSuccess: (token: string, requiresTwoFactor: boolean) => void
-  onShowRegister: () => void
+  onLoginSuccess: (userData: any) => void
+  onSwitchToRegister: () => void
 }
 
-export function LoginForm({ onSuccess, onShowRegister }: LoginFormProps) {
+export function LoginForm({ onLoginSuccess, onSwitchToRegister }: LoginFormProps) {
   const [email, setEmail] = useState("admin@example.com") // Pre-fill for demo
   const [password, setPassword] = useState("admin123") // Pre-fill for demo
   const [showPassword, setShowPassword] = useState(false)
@@ -27,28 +27,48 @@ export function LoginForm({ onSuccess, onShowRegister }: LoginFormProps) {
     setError("")
 
     try {
+      console.log("=== INICIANDO LOGIN ===")
+      console.log("Email:", email)
+
       const response = await fetch("/api/auth/login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({ email, password }),
       })
 
-      const data = await response.json()
+      console.log("Response status:", response.status)
+      console.log("Response headers:", Object.fromEntries(response.headers.entries()))
 
-      if (response.ok) {
-        if (data.requiresTwoFactor) {
-          // Usuário precisa configurar 2FA
-          onSuccess(data.token || "", true)
-        } else {
-          // Login completo
-          onSuccess(data.token, false)
-        }
+      // Check if response is JSON
+      const contentType = response.headers.get("content-type")
+      if (!contentType || !contentType.includes("application/json")) {
+        const textResponse = await response.text()
+        console.error("Resposta não é JSON:", textResponse)
+        throw new Error("Servidor retornou resposta inválida")
+      }
+
+      const data = await response.json()
+      console.log("Response data:", data)
+
+      if (response.ok && data.success) {
+        console.log("Login bem-sucedido")
+        onLoginSuccess(data)
       } else {
+        console.error("Login falhou:", data.error)
         setError(data.error || "Erro ao fazer login")
       }
-    } catch (error) {
-      console.error("Erro no login:", error)
-      setError("Erro de conexão")
+    } catch (error: any) {
+      console.error("=== ERRO NO LOGIN ===", error)
+
+      if (error.message.includes("JSON")) {
+        setError("Erro de comunicação com o servidor")
+      } else if (error.message.includes("fetch")) {
+        setError("Erro de conexão com o servidor")
+      } else {
+        setError(error.message || "Erro desconhecido")
+      }
     } finally {
       setIsLoading(false)
     }
@@ -75,6 +95,7 @@ export function LoginForm({ onSuccess, onShowRegister }: LoginFormProps) {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="seu@email.com"
                 required
+                disabled={isLoading}
               />
             </div>
 
@@ -88,11 +109,13 @@ export function LoginForm({ onSuccess, onShowRegister }: LoginFormProps) {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Sua senha"
                   required
+                  disabled={isLoading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  disabled={isLoading}
                 >
                   {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                 </button>
@@ -101,7 +124,15 @@ export function LoginForm({ onSuccess, onShowRegister }: LoginFormProps) {
 
             {error && (
               <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
+                <AlertDescription>
+                  {error}
+                  {process.env.NODE_ENV === "development" && (
+                    <details className="mt-2 text-xs">
+                      <summary>Debug Info</summary>
+                      <p>Verifique o console do navegador para mais detalhes</p>
+                    </details>
+                  )}
+                </AlertDescription>
               </Alert>
             )}
 
@@ -112,8 +143,9 @@ export function LoginForm({ onSuccess, onShowRegister }: LoginFormProps) {
             <div className="text-center space-y-2">
               <button
                 type="button"
-                onClick={onShowRegister}
+                onClick={onSwitchToRegister}
                 className="text-sm text-blue-600 hover:text-blue-700 underline"
+                disabled={isLoading}
               >
                 Não tem uma conta? Criar conta
               </button>

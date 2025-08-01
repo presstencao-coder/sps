@@ -1,8 +1,7 @@
 import { Suspense } from "react"
-import { PasswordManager } from "@/components/password-manager"
 import { AuthWrapper } from "@/components/auth-wrapper"
 
-export default function Home() {
+export default function HomePage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
       <div className="container mx-auto px-4 py-8">
@@ -12,9 +11,7 @@ export default function Home() {
         </div>
 
         <Suspense fallback={<div className="text-center">Carregando...</div>}>
-          <AuthWrapper>
-            <PasswordManager />
-          </AuthWrapper>
+          <AuthWrapper />
         </Suspense>
       </div>
     </div>
