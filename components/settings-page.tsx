@@ -7,223 +7,131 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
-import { Separator } from "@/components/ui/separator"
-import { Shield, Key, Eye, EyeOff, Smartphone, AlertTriangle, Check } from "lucide-react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Eye, EyeOff, Loader2, Shield, Key, Bell } from "lucide-react"
+import { toast } from "sonner"
+import { TwoFactorAuth } from "./two-factor-auth"
 
-interface SettingsPageProps {
-  user: {
-    id: string
-    email: string
-    name: string
-    twoFactorEnabled: boolean
-  }
-}
-
-export function SettingsPage({ user }: SettingsPageProps) {
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
-  const [success, setSuccess] = useState("")
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false)
-  const [showNewPassword, setShowNewPassword] = useState(false)
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-
-  const [passwordForm, setPasswordForm] = useState({
+export function SettingsPage() {
+  const [passwordData, setPasswordData] = useState({
     currentPassword: "",
     newPassword: "",
     confirmPassword: "",
   })
-
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem("token")
-    return {
-      "Content-Type": "application/json",
-      ...(token && { Authorization: `Bearer ${token}` }),
-    }
-  }
+  const [showPasswords, setShowPasswords] = useState({
+    current: false,
+    new: false,
+    confirm: false,
+  })
+  const [isChangingPassword, setIsChangingPassword] = useState(false)
+  const [passwordError, setPasswordError] = useState("")
+  const [notifications, setNotifications] = useState({
+    email: true,
+    security: true,
+    updates: false,
+  })
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
-    setError("")
-    setSuccess("")
+    setPasswordError("")
 
-    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      setError("As senhas não coincidem")
-      setLoading(false)
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      setPasswordError("As senhas não coincidem")
       return
     }
 
-    if (passwordForm.newPassword.length < 6) {
-      setError("A nova senha deve ter pelo menos 6 caracteres")
-      setLoading(false)
+    if (passwordData.newPassword.length < 8) {
+      setPasswordError("A nova senha deve ter pelo menos 8 caracteres")
       return
     }
+
+    setIsChangingPassword(true)
 
     try {
       const response = await fetch("/api/user/change-password", {
         method: "POST",
-        headers: getAuthHeaders(),
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
-          currentPassword: passwordForm.currentPassword,
-          newPassword: passwordForm.newPassword,
+          currentPassword: passwordData.currentPassword,
+          newPassword: passwordData.newPassword,
         }),
       })
 
       if (response.ok) {
-        setSuccess("Senha alterada com sucesso!")
-        setPasswordForm({
+        toast.success("Senha alterada com sucesso!")
+        setPasswordData({
           currentPassword: "",
           newPassword: "",
           confirmPassword: "",
         })
       } else {
         const data = await response.json()
-        setError(data.error || "Erro ao alterar senha")
+        setPasswordError(data.error || "Erro ao alterar senha")
       }
     } catch (error) {
-      console.error("Erro ao alterar senha:", error)
-      setError("Erro de conexão")
+      setPasswordError("Erro de conexão")
     } finally {
-      setLoading(false)
+      setIsChangingPassword(false)
     }
   }
 
-  const handleToggle2FA = async () => {
-    setLoading(true)
-    setError("")
-    setSuccess("")
+  const togglePasswordVisibility = (field: "current" | "new" | "confirm") => {
+    setShowPasswords((prev) => ({
+      ...prev,
+      [field]: !prev[field],
+    }))
+  }
 
-    try {
-      const endpoint = user.twoFactorEnabled ? "/api/auth/2fa/disable" : "/api/auth/2fa/setup"
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: getAuthHeaders(),
-      })
-
-      if (response.ok) {
-        const message = user.twoFactorEnabled ? "2FA desabilitado com sucesso!" : "2FA configurado com sucesso!"
-        setSuccess(message)
-      } else {
-        const data = await response.json()
-        setError(data.error || "Erro ao alterar configuração 2FA")
-      }
-    } catch (error) {
-      console.error("Erro ao alterar 2FA:", error)
-      setError("Erro de conexão")
-    } finally {
-      setLoading(false)
-    }
+  const handleNotificationChange = (key: string, value: boolean) => {
+    setNotifications((prev) => ({
+      ...prev,
+      [key]: value,
+    }))
+    toast.success("Configuração de notificação atualizada!")
   }
 
   return (
     <div className="space-y-6">
-      {/* Security Settings */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Shield className="w-5 h-5" />
-            Configurações de Segurança
-          </CardTitle>
-          <CardDescription>Gerencie as configurações de segurança da sua conta</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {error && (
-            <Alert variant="destructive">
-              <AlertTriangle className="w-4 h-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
+      <div>
+        <h1 className="text-3xl font-bold">Configurações</h1>
+        <p className="text-gray-600 dark:text-gray-400">Gerencie suas configurações de segurança e preferências</p>
+      </div>
 
-          {success && (
-            <Alert>
-              <Check className="w-4 h-4" />
-              <AlertDescription className="text-green-600">{success}</AlertDescription>
-            </Alert>
-          )}
+      <Tabs defaultValue="security" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="security">
+            <Shield className="mr-2 h-4 w-4" />
+            Segurança
+          </TabsTrigger>
+          <TabsTrigger value="notifications">
+            <Bell className="mr-2 h-4 w-4" />
+            Notificações
+          </TabsTrigger>
+        </TabsList>
 
-          {/* Two-Factor Authentication */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-4 border rounded-lg">
-              <div className="flex items-center space-x-3">
-                <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded-lg">
-                  <Smartphone className="w-5 h-5 text-blue-600" />
-                </div>
-                <div>
-                  <h3 className="font-medium">Autenticação de Dois Fatores</h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Adicione uma camada extra de segurança à sua conta
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center space-x-3">
-                <Badge variant={user.twoFactorEnabled ? "default" : "secondary"}>
-                  {user.twoFactorEnabled ? "Ativo" : "Inativo"}
-                </Badge>
-                <Switch checked={user.twoFactorEnabled} onCheckedChange={handleToggle2FA} disabled={loading} />
-              </div>
-            </div>
-
-            {user.twoFactorEnabled && (
-              <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                <div className="flex items-center space-x-2">
-                  <Check className="w-4 h-4 text-green-600" />
-                  <p className="text-sm font-medium text-green-800 dark:text-green-200">
-                    2FA está ativo e protegendo sua conta
-                  </p>
-                </div>
-                <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                  Use seu aplicativo autenticador para fazer login
-                </p>
-              </div>
-            )}
-          </div>
-
-          <Separator />
-
-          {/* Password Change */}
-          <div className="space-y-4">
-            <div className="flex items-center space-x-2">
-              <Key className="w-5 h-5 text-slate-600" />
-              <h3 className="font-medium">Alterar Senha</h3>
-            </div>
-
-            <form onSubmit={handlePasswordChange} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="currentPassword">Senha Atual</Label>
-                <div className="relative">
-                  <Input
-                    id="currentPassword"
-                    type={showCurrentPassword ? "text" : "password"}
-                    value={passwordForm.currentPassword}
-                    onChange={(e) => setPasswordForm((prev) => ({ ...prev, currentPassword: e.target.value }))}
-                    placeholder="Digite sua senha atual"
-                    required
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                    onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                  >
-                    {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </Button>
-                </div>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
+        <TabsContent value="security" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Key className="mr-2 h-5 w-5" />
+                Alterar Senha
+              </CardTitle>
+              <CardDescription>Mantenha sua conta segura alterando sua senha regularmente</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handlePasswordChange} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="newPassword">Nova Senha</Label>
+                  <Label htmlFor="currentPassword">Senha Atual</Label>
                   <div className="relative">
                     <Input
-                      id="newPassword"
-                      type={showNewPassword ? "text" : "password"}
-                      value={passwordForm.newPassword}
-                      onChange={(e) => setPasswordForm((prev) => ({ ...prev, newPassword: e.target.value }))}
-                      placeholder="Digite a nova senha"
+                      id="currentPassword"
+                      type={showPasswords.current ? "text" : "password"}
+                      value={passwordData.currentPassword}
+                      onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
                       required
                     />
                     <Button
@@ -231,9 +139,31 @@ export function SettingsPage({ user }: SettingsPageProps) {
                       variant="ghost"
                       size="sm"
                       className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      onClick={() => togglePasswordVisibility("current")}
                     >
-                      {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      {showPasswords.current ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="newPassword">Nova Senha</Label>
+                  <div className="relative">
+                    <Input
+                      id="newPassword"
+                      type={showPasswords.new ? "text" : "password"}
+                      value={passwordData.newPassword}
+                      onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                      required
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                      onClick={() => togglePasswordVisibility("new")}
+                    >
+                      {showPasswords.new ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </Button>
                   </div>
                 </div>
@@ -243,10 +173,9 @@ export function SettingsPage({ user }: SettingsPageProps) {
                   <div className="relative">
                     <Input
                       id="confirmPassword"
-                      type={showConfirmPassword ? "text" : "password"}
-                      value={passwordForm.confirmPassword}
-                      onChange={(e) => setPasswordForm((prev) => ({ ...prev, confirmPassword: e.target.value }))}
-                      placeholder="Confirme a nova senha"
+                      type={showPasswords.confirm ? "text" : "password"}
+                      value={passwordData.confirmPassword}
+                      onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
                       required
                     />
                     <Button
@@ -254,72 +183,81 @@ export function SettingsPage({ user }: SettingsPageProps) {
                       variant="ghost"
                       size="sm"
                       className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      onClick={() => togglePasswordVisibility("confirm")}
                     >
-                      {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      {showPasswords.confirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </Button>
                   </div>
                 </div>
-              </div>
 
-              <Button type="submit" disabled={loading}>
-                {loading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Alterando...
-                  </>
-                ) : (
-                  <>
-                    <Key className="w-4 h-4 mr-2" />
-                    Alterar Senha
-                  </>
+                {passwordError && (
+                  <Alert variant="destructive">
+                    <AlertDescription>{passwordError}</AlertDescription>
+                  </Alert>
                 )}
-              </Button>
-            </form>
-          </div>
-        </CardContent>
-      </Card>
 
-      {/* Security Recommendations */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Recomendações de Segurança</CardTitle>
-          <CardDescription>Dicas para manter sua conta segura</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="flex items-start space-x-3 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-              <Shield className="w-5 h-5 text-blue-600 mt-0.5" />
-              <div>
-                <h4 className="font-medium text-blue-900 dark:text-blue-100">Use senhas fortes</h4>
-                <p className="text-sm text-blue-700 dark:text-blue-300">
-                  Combine letras maiúsculas, minúsculas, números e símbolos
-                </p>
-              </div>
-            </div>
+                <Button type="submit" disabled={isChangingPassword}>
+                  {isChangingPassword ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Alterando...
+                    </>
+                  ) : (
+                    "Alterar Senha"
+                  )}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
 
-            <div className="flex items-start space-x-3 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
-              <Smartphone className="w-5 h-5 text-green-600 mt-0.5" />
-              <div>
-                <h4 className="font-medium text-green-900 dark:text-green-100">Ative o 2FA</h4>
-                <p className="text-sm text-green-700 dark:text-green-300">
-                  A autenticação de dois fatores adiciona uma camada extra de proteção
-                </p>
-              </div>
-            </div>
+          <TwoFactorAuth />
+        </TabsContent>
 
-            <div className="flex items-start space-x-3 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
-              <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5" />
-              <div>
-                <h4 className="font-medium text-yellow-900 dark:text-yellow-100">Mantenha-se atualizado</h4>
-                <p className="text-sm text-yellow-700 dark:text-yellow-300">
-                  Revise regularmente suas senhas e configurações de segurança
-                </p>
+        <TabsContent value="notifications" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Preferências de Notificação</CardTitle>
+              <CardDescription>Configure como você deseja receber notificações</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label className="text-base">Notificações por Email</Label>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Receba atualizações importantes por email</p>
+                </div>
+                <Switch
+                  checked={notifications.email}
+                  onCheckedChange={(checked) => handleNotificationChange("email", checked)}
+                />
               </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label className="text-base">Alertas de Segurança</Label>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Seja notificado sobre atividades suspeitas</p>
+                </div>
+                <Switch
+                  checked={notifications.security}
+                  onCheckedChange={(checked) => handleNotificationChange("security", checked)}
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label className="text-base">Atualizações do Sistema</Label>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Receba notificações sobre novas funcionalidades
+                  </p>
+                </div>
+                <Switch
+                  checked={notifications.updates}
+                  onCheckedChange={(checked) => handleNotificationChange("updates", checked)}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
