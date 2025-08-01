@@ -1,132 +1,81 @@
 import { type NextRequest, NextResponse } from "next/server"
 import jwt from "jsonwebtoken"
-import bcrypt from "bcryptjs"
-import { getDatabase } from "@/lib/database"
+import { getUserById } from "@/lib/database"
 
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"
 
 export async function GET(request: NextRequest) {
   try {
-    console.log("GET /api/user/profile - Carregando perfil do usuário")
+    console.log("=== GET PROFILE API ===")
 
     const authHeader = request.headers.get("authorization")
-    let userId = "demo-user-id"
-
-    if (authHeader?.startsWith("Bearer ")) {
-      try {
-        const token = authHeader.substring(7)
-        const decoded = jwt.verify(token, JWT_SECRET) as { userId: string }
-        userId = decoded.userId
-        console.log("Token válido, userId:", userId)
-      } catch (error) {
-        console.log("Token inválido, usando usuário demo")
-      }
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      console.log("Token não fornecido")
+      return NextResponse.json({ error: "Token não fornecido" }, { status: 401 })
     }
 
-    const db = getDatabase()
-    const user = db
-      .prepare("SELECT id, name, email, two_factor_enabled, created_at, updated_at FROM users WHERE id = ?")
-      .get(userId)
+    const token = authHeader.substring(7)
 
+    let decoded: any
+    try {
+      decoded = jwt.verify(token, JWT_SECRET)
+      console.log("Token decodificado:", decoded.userId)
+    } catch (error) {
+      console.error("Token inválido:", error)
+      return NextResponse.json({ error: "Token inválido" }, { status: 401 })
+    }
+
+    const user = await getUserById(decoded.userId)
     if (!user) {
-      console.log("Usuário não encontrado, criando usuário demo")
-      // Create demo user if not exists
-      const hashedPassword = await bcrypt.hash("admin123", 10)
-      db.prepare(`
-        INSERT OR REPLACE INTO users (id, name, email, password, two_factor_enabled, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        userId,
-        "Administrador",
-        "admin@example.com",
-        hashedPassword,
-        0,
-        new Date().toISOString(),
-        new Date().toISOString(),
-      )
-
-      const newUser = db
-        .prepare("SELECT id, name, email, two_factor_enabled, created_at, updated_at FROM users WHERE id = ?")
-        .get(userId)
-
-      return NextResponse.json({
-        id: newUser.id,
-        name: newUser.name,
-        email: newUser.email,
-        twoFactorEnabled: Boolean(newUser.two_factor_enabled),
-        createdAt: newUser.created_at,
-        updatedAt: newUser.updated_at,
-      })
+      console.log("Usuário não encontrado")
+      return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 })
     }
 
     return NextResponse.json({
       id: user.id,
       name: user.name,
       email: user.email,
-      twoFactorEnabled: Boolean(user.two_factor_enabled),
+      twoFactorEnabled: user.two_factor_enabled,
       createdAt: user.created_at,
       updatedAt: user.updated_at,
     })
   } catch (error) {
-    console.error("Erro ao carregar perfil:", error)
+    console.error("Erro no GET profile:", error)
     return NextResponse.json({ error: "Erro interno do servidor" }, { status: 500 })
   }
 }
 
 export async function PUT(request: NextRequest) {
   try {
-    console.log("PUT /api/user/profile - Atualizando perfil do usuário")
+    console.log("=== PUT PROFILE API ===")
 
     const authHeader = request.headers.get("authorization")
-    let userId = "demo-user-id"
-
-    if (authHeader?.startsWith("Bearer ")) {
-      try {
-        const token = authHeader.substring(7)
-        const decoded = jwt.verify(token, JWT_SECRET) as { userId: string }
-        userId = decoded.userId
-        console.log("Token válido, userId:", userId)
-      } catch (error) {
-        console.log("Token inválido, usando usuário demo")
-      }
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return NextResponse.json({ error: "Token não fornecido" }, { status: 401 })
     }
 
-    const { name, email } = await request.json()
+    const token = authHeader.substring(7)
+
+    let decoded: any
+    try {
+      decoded = jwt.verify(token, JWT_SECRET)
+    } catch (error) {
+      return NextResponse.json({ error: "Token inválido" }, { status: 401 })
+    }
+
+    const body = await request.json()
+    const { name, email } = body
 
     if (!name || !email) {
       return NextResponse.json({ error: "Nome e email são obrigatórios" }, { status: 400 })
     }
 
-    const db = getDatabase()
+    const { updateUser } = await import("@/lib/database")
+    await updateUser(decoded.userId, name, email)
 
-    // Check if email is already taken by another user
-    const existingUser = db.prepare("SELECT id FROM users WHERE email = ? AND id != ?").get(email, userId)
-    if (existingUser) {
-      return NextResponse.json({ error: "Este email já está em uso" }, { status: 400 })
-    }
-
-    // Update user
-    db.prepare(`
-      UPDATE users 
-      SET name = ?, email = ?, updated_at = ?
-      WHERE id = ?
-    `).run(name, email, new Date().toISOString(), userId)
-
-    // Get updated user
-    const updatedUser = db
-      .prepare("SELECT id, name, email, two_factor_enabled, created_at, updated_at FROM users WHERE id = ?")
-      .get(userId)
-
-    return NextResponse.json({
-      id: updatedUser.id,
-      name: updatedUser.name,
-      email: updatedUser.email,
-      twoFactorEnabled: Boolean(updatedUser.two_factor_enabled),
-      createdAt: updatedUser.created_at,
-      updatedAt: updatedUser.updated_at,
-    })
+    return NextResponse.json({ success: true, message: "Perfil atualizado com sucesso" })
   } catch (error) {
-    console.error("Erro ao atualizar perfil:", error)
+    console.error("Erro no PUT profile:", error)
     return NextResponse.json({ error: "Erro interno do servidor" }, { status: 500 })
   }
 }

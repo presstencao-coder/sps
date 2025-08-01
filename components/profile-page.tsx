@@ -4,12 +4,12 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { useToast } from "@/hooks/use-toast"
-import { User, Mail, Calendar, Shield, Edit3, Save, X, CheckCircle, AlertCircle } from "lucide-react"
+import { User, Mail, Calendar, Shield, Save, Loader2 } from "lucide-react"
 
 interface UserProfile {
   id: string
@@ -22,268 +22,255 @@ interface UserProfile {
 
 export function ProfilePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [isEditing, setIsEditing] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [name, setName] = useState("")
+  const [email, setEmail] = useState("")
   const [error, setError] = useState("")
-  const [editForm, setEditForm] = useState({
-    name: "",
-    email: "",
-  })
   const { toast } = useToast()
 
   useEffect(() => {
     loadProfile()
   }, [])
 
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem("token")
-    return {
-      "Content-Type": "application/json",
-      ...(token && { Authorization: `Bearer ${token}` }),
-    }
-  }
-
   const loadProfile = async () => {
     try {
-      setLoading(true)
-      setError("")
+      const token = localStorage.getItem("token")
+      if (!token) return
 
       const response = await fetch("/api/user/profile", {
-        headers: getAuthHeaders(),
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       })
 
       if (response.ok) {
         const data = await response.json()
         setProfile(data)
-        setEditForm({
-          name: data.name,
-          email: data.email,
-        })
+        setName(data.name)
+        setEmail(data.email)
       } else {
-        const errorData = await response.json()
-        setError(errorData.error || "Erro ao carregar perfil")
+        setError("Erro ao carregar perfil")
       }
     } catch (error) {
       console.error("Erro ao carregar perfil:", error)
-      setError("Erro de conexão")
+      setError("Erro ao carregar perfil")
     } finally {
       setLoading(false)
     }
   }
 
-  const saveProfile = async () => {
+  const handleSave = async () => {
+    if (!name.trim() || !email.trim()) {
+      setError("Nome e email são obrigatórios")
+      return
+    }
+
+    setSaving(true)
+    setError("")
+
     try {
-      setSaving(true)
-      setError("")
+      const token = localStorage.getItem("token")
+      if (!token) return
 
       const response = await fetch("/api/user/profile", {
         method: "PUT",
-        headers: getAuthHeaders(),
-        body: JSON.stringify(editForm),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ name, email }),
       })
 
       if (response.ok) {
-        const data = await response.json()
-        setProfile(data)
-        setIsEditing(false)
         toast({
           title: "Perfil atualizado",
           description: "Suas informações foram salvas com sucesso.",
         })
+        await loadProfile()
       } else {
-        const errorData = await response.json()
-        setError(errorData.error || "Erro ao salvar perfil")
+        const data = await response.json()
+        setError(data.error || "Erro ao salvar perfil")
       }
     } catch (error) {
       console.error("Erro ao salvar perfil:", error)
-      setError("Erro de conexão")
+      setError("Erro ao salvar perfil")
     } finally {
       setSaving(false)
     }
   }
 
-  const cancelEdit = () => {
-    if (profile) {
-      setEditForm({
-        name: profile.name,
-        email: profile.email,
-      })
-    }
-    setIsEditing(false)
-    setError("")
-  }
-
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <span className="ml-2">Carregando perfil...</span>
+      <div className="flex items-center justify-center h-64">
+        <div className="flex items-center space-x-2">
+          <Loader2 className="h-6 w-6 animate-spin" />
+          <span>Carregando perfil...</span>
+        </div>
       </div>
     )
   }
 
   if (!profile) {
     return (
-      <div className="text-center py-12">
-        <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-        <p className="text-gray-500">Erro ao carregar perfil do usuário</p>
-        <Button onClick={loadProfile} className="mt-4">
-          Tentar novamente
-        </Button>
+      <div className="flex items-center justify-center h-64">
+        <Alert>
+          <AlertDescription>Erro ao carregar perfil do usuário.</AlertDescription>
+        </Alert>
       </div>
     )
   }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Meu Perfil</h1>
-          <p className="text-slate-600 dark:text-slate-400 mt-1">
-            Gerencie suas informações pessoais e configurações de conta
-          </p>
-        </div>
-
-        {!isEditing && (
-          <Button onClick={() => setIsEditing(true)} className="gap-2">
-            <Edit3 className="w-4 h-4" />
-            Editar Perfil
-          </Button>
-        )}
-      </div>
-
-      {/* Profile Card */}
-      <Card className="overflow-hidden">
-        <div className="h-24 bg-gradient-to-r from-blue-500 via-purple-500 to-indigo-600"></div>
-        <CardContent className="relative pt-0 pb-6">
-          {/* Avatar */}
-          <div className="flex items-start justify-between -mt-12 mb-6">
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center justify-center w-24 h-24 bg-white dark:bg-slate-800 rounded-full border-4 border-white dark:border-slate-800 shadow-lg">
-                <div className="flex items-center justify-center w-20 h-20 bg-gradient-to-br from-emerald-400 to-cyan-500 rounded-full text-white font-bold text-2xl">
-                  {profile.name.charAt(0).toUpperCase()}
-                </div>
-              </div>
-              <div className="pt-12">
-                <h2 className="text-2xl font-bold text-slate-900 dark:text-white">{profile.name}</h2>
-                <p className="text-slate-600 dark:text-slate-400">{profile.email}</p>
-                <div className="flex items-center mt-2 space-x-2">
-                  <Badge variant={profile.twoFactorEnabled ? "default" : "secondary"} className="gap-1">
-                    <Shield className="w-3 h-3" />
-                    2FA {profile.twoFactorEnabled ? "Ativo" : "Inativo"}
-                  </Badge>
-                  <Badge variant="outline" className="gap-1">
-                    <CheckCircle className="w-3 h-3" />
-                    Conta Verificada
-                  </Badge>
-                </div>
-              </div>
+      {/* Profile Header */}
+      <div className="bg-gradient-to-r from-blue-500 to-indigo-600 rounded-2xl p-8 text-white">
+        <div className="flex items-center space-x-6">
+          <div className="flex items-center justify-center w-20 h-20 bg-white/20 rounded-full text-2xl font-bold">
+            {profile.name.charAt(0).toUpperCase()}
+          </div>
+          <div className="flex-1">
+            <h1 className="text-3xl font-bold">{profile.name}</h1>
+            <p className="text-blue-100 text-lg">{profile.email}</p>
+            <div className="flex items-center space-x-4 mt-3">
+              <Badge variant="secondary" className="bg-white/20 text-white border-white/30">
+                <Shield className="w-3 h-3 mr-1" />
+                2FA {profile.twoFactorEnabled ? "Ativo" : "Inativo"}
+              </Badge>
+              <span className="text-blue-100 text-sm">
+                Membro desde {new Date(profile.createdAt).toLocaleDateString("pt-BR")}
+              </span>
             </div>
           </div>
+        </div>
+      </div>
 
-          {error && (
-            <Alert variant="destructive" className="mb-6">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Edit Profile Form */}
+        <div className="lg:col-span-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <User className="w-5 h-5" />
+                <span>Informações Pessoais</span>
+              </CardTitle>
+              <CardDescription>Atualize suas informações básicas de perfil.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
 
-          {/* Profile Form */}
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label htmlFor="name" className="flex items-center gap-2">
-                  <User className="w-4 h-4" />
-                  Nome Completo
-                </Label>
-                {isEditing ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Nome Completo</Label>
                   <Input
                     id="name"
-                    value={editForm.name}
-                    onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
                     placeholder="Seu nome completo"
                     disabled={saving}
                   />
-                ) : (
-                  <div className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-md text-slate-900 dark:text-white">
-                    {profile.name}
-                  </div>
-                )}
-              </div>
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="email" className="flex items-center gap-2">
-                  <Mail className="w-4 h-4" />
-                  Email
-                </Label>
-                {isEditing ? (
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
                   <Input
                     id="email"
                     type="email"
-                    value={editForm.email}
-                    onChange={(e) => setEditForm((prev) => ({ ...prev, email: e.target.value }))}
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     placeholder="seu@email.com"
                     disabled={saving}
                   />
-                ) : (
-                  <div className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-md text-slate-900 dark:text-white">
-                    {profile.email}
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="flex justify-end">
+                <Button onClick={handleSave} disabled={saving}>
+                  {saving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Salvando...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4 mr-2" />
+                      Salvar Alterações
+                    </>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Account Stats */}
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Mail className="w-5 h-5" />
+                <span>Informações da Conta</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">ID da Conta</span>
+                <span className="text-sm font-mono">{profile.id.slice(0, 8)}...</span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Status 2FA</span>
+                <Badge variant={profile.twoFactorEnabled ? "default" : "secondary"}>
+                  {profile.twoFactorEnabled ? "Ativo" : "Inativo"}
+                </Badge>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Criado em</span>
+                <span className="text-sm">{new Date(profile.createdAt).toLocaleDateString("pt-BR")}</span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Atualizado em</span>
+                <span className="text-sm">{new Date(profile.updatedAt).toLocaleDateString("pt-BR")}</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Calendar className="w-5 h-5" />
+                <span>Atividade Recente</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <div className="flex items-center space-x-3">
+                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  <div className="flex-1">
+                    <p className="text-sm">Login realizado</p>
+                    <p className="text-xs text-muted-foreground">Hoje</p>
                   </div>
-                )}
-              </div>
-            </div>
-
-            <Separator />
-
-            {/* Account Info */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4" />
-                  Conta criada em
-                </Label>
-                <div className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-md text-slate-600 dark:text-slate-400">
-                  {new Date(profile.createdAt).toLocaleDateString("pt-BR", {
-                    day: "2-digit",
-                    month: "long",
-                    year: "numeric",
-                  })}
+                </div>
+                <div className="flex items-center space-x-3">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                  <div className="flex-1">
+                    <p className="text-sm">Perfil visualizado</p>
+                    <p className="text-xs text-muted-foreground">Agora</p>
+                  </div>
                 </div>
               </div>
-
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4" />
-                  Última atualização
-                </Label>
-                <div className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-md text-slate-600 dark:text-slate-400">
-                  {new Date(profile.updatedAt).toLocaleDateString("pt-BR", {
-                    day: "2-digit",
-                    month: "long",
-                    year: "numeric",
-                  })}
-                </div>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            {isEditing && (
-              <div className="flex justify-end space-x-3 pt-4">
-                <Button variant="outline" onClick={cancelEdit} disabled={saving} className="gap-2 bg-transparent">
-                  <X className="w-4 h-4" />
-                  Cancelar
-                </Button>
-                <Button onClick={saveProfile} disabled={saving} className="gap-2">
-                  <Save className="w-4 h-4" />
-                  {saving ? "Salvando..." : "Salvar Alterações"}
-                </Button>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   )
 }
