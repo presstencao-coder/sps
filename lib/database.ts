@@ -1,8 +1,10 @@
 import { v4 as uuidv4 } from "uuid"
+import sqlite3 from "sqlite3"
+import path from "path"
+import bcrypt from "bcryptjs"
 
-// In-memory database for demo purposes
 interface User {
-  id: string
+  id: number
   name: string
   email: string
   password_hash: string
@@ -14,7 +16,7 @@ interface User {
 
 interface Password {
   id: string
-  user_id: string
+  user_id: number
   title: string
   username: string
   encrypted_password: string
@@ -27,40 +29,66 @@ interface Password {
 
 interface Session {
   id: string
-  user_id: string
+  user_id: number
   token: string
   expires_at: string
   created_at: string
 }
 
-// In-memory storage
-const users: User[] = []
-const passwords: Password[] = []
-let sessions: Session[] = []
+const DB_PATH = process.env.SQLITE_PATH || path.join(process.cwd(), "database.sqlite")
+
+let db: sqlite3.Database | null = null
+
+export function getDatabase(): sqlite3.Database {
+  if (!db) {
+    db = new sqlite3.Database(DB_PATH)
+  }
+  return db
+}
 
 // Initialize with demo data
 function initializeDatabase() {
-  if (users.length === 0) {
-    console.log("Inicializando banco de dados...")
+  const db = getDatabase()
+  db.serialize(() => {
+    db.run(
+      "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, email TEXT, password TEXT, two_factor_secret TEXT, two_factor_enabled INTEGER, created_at TEXT, updated_at TEXT)",
+    )
+    db.run(
+      "CREATE TABLE IF NOT EXISTS passwords (id TEXT PRIMARY KEY, user_id INTEGER, title TEXT, username TEXT, encrypted_password TEXT, url TEXT, category TEXT, notes TEXT, created_at TEXT, updated_at TEXT)",
+    )
+    db.run(
+      "CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, user_id INTEGER, token TEXT, expires_at TEXT, created_at TEXT)",
+    )
 
-    // Create admin user with simple password
-    const adminUser: User = {
-      id: "user-1",
+    const adminUserStmt = db.prepare(
+      "INSERT INTO users (name, email, password, two_factor_enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    const adminUser = {
       name: "Administrador",
       email: "admin@example.com",
-      password_hash: "admin123", // Simple password for demo
-      two_factor_enabled: false,
+      password: bcrypt.hashSync("admin123", 10),
+      two_factor_enabled: 0,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
-    users.push(adminUser)
+    adminUserStmt.run(
+      adminUser.name,
+      adminUser.email,
+      adminUser.password,
+      adminUser.two_factor_enabled,
+      adminUser.created_at,
+      adminUser.updated_at,
+    )
+    adminUserStmt.finalize()
     console.log("Usuário admin criado:", adminUser.email)
 
-    // Create sample passwords
+    const samplePasswordsStmt = db.prepare(
+      "INSERT INTO passwords (id, user_id, title, username, encrypted_password, url, category, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
     const samplePasswords: Password[] = [
       {
-        id: "pass-1",
-        user_id: "user-1",
+        id: uuidv4(),
+        user_id: 1,
         title: "Gmail",
         username: "admin@gmail.com",
         encrypted_password: Buffer.from("MySecureGmailPass123!").toString("base64"),
@@ -71,8 +99,8 @@ function initializeDatabase() {
         updated_at: new Date().toISOString(),
       },
       {
-        id: "pass-2",
-        user_id: "user-1",
+        id: uuidv4(),
+        user_id: 1,
         title: "Facebook",
         username: "admin@example.com",
         encrypted_password: Buffer.from("FacebookSecure456!").toString("base64"),
@@ -83,8 +111,8 @@ function initializeDatabase() {
         updated_at: new Date().toISOString(),
       },
       {
-        id: "pass-3",
-        user_id: "user-1",
+        id: uuidv4(),
+        user_id: 1,
         title: "Banco do Brasil",
         username: "admin123",
         encrypted_password: Buffer.from("BankSecure789!").toString("base64"),
@@ -95,8 +123,8 @@ function initializeDatabase() {
         updated_at: new Date().toISOString(),
       },
       {
-        id: "pass-4",
-        user_id: "user-1",
+        id: uuidv4(),
+        user_id: 1,
         title: "GitHub",
         username: "admin-dev",
         encrypted_password: Buffer.from("GitHubDev2024!").toString("base64"),
@@ -107,8 +135,8 @@ function initializeDatabase() {
         updated_at: new Date().toISOString(),
       },
       {
-        id: "pass-5",
-        user_id: "user-1",
+        id: uuidv4(),
+        user_id: 1,
         title: "AWS Console",
         username: "admin@company.com",
         encrypted_password: Buffer.from("AWSSecure2024!").toString("base64"),
@@ -120,110 +148,145 @@ function initializeDatabase() {
       },
     ]
 
-    passwords.push(...samplePasswords)
+    samplePasswords.forEach((password) => {
+      samplePasswordsStmt.run(
+        password.id,
+        password.user_id,
+        password.title,
+        password.username,
+        password.encrypted_password,
+        password.url,
+        password.category,
+        password.notes,
+        password.created_at,
+        password.updated_at,
+      )
+    })
+    samplePasswordsStmt.finalize()
     console.log(`${samplePasswords.length} senhas de exemplo criadas`)
-  }
+  })
 }
 
 // Initialize database
 initializeDatabase()
 
 // User operations
-export async function createUser(name: string, email: string, password: string): Promise<string> {
-  try {
-    const user: User = {
-      id: uuidv4(),
-      name,
-      email,
-      password_hash: password, // Store password directly for demo
-      two_factor_enabled: false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+export async function createUser(name: string, email: string, password: string): Promise<any> {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const hashedPassword = await bcrypt.hash(password, 10)
+      const db = getDatabase()
+
+      db.run(
+        "INSERT INTO users (name, email, password) VALUES (?, ?, ?)",
+        [name, email, hashedPassword],
+        function (err) {
+          if (err) {
+            reject(err)
+          } else {
+            resolve({ id: this.lastID, name, email })
+          }
+        },
+      )
+    } catch (error) {
+      reject(error)
     }
-    users.push(user)
-    console.log("Usuário criado:", email)
-    return user.id
-  } catch (error) {
-    console.error("Erro ao criar usuário:", error)
-    throw error
-  }
+  })
 }
 
-export async function getUserByEmail(email: string): Promise<User | null> {
-  try {
-    const user = users.find((user) => user.email === email) || null
-    console.log("Busca por email:", email, "Encontrado:", !!user)
-    return user
-  } catch (error) {
-    console.error("Erro ao buscar usuário por email:", error)
-    throw error
-  }
+export async function getUserByEmail(email: string): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const db = getDatabase()
+    db.get("SELECT * FROM users WHERE email = ?", [email], (err, row) => {
+      if (err) {
+        reject(err)
+      } else {
+        resolve(row)
+      }
+    })
+  })
 }
 
-export async function getUserById(id: string): Promise<User | null> {
-  try {
-    const user = users.find((user) => user.id === id) || null
-    console.log("Busca por ID:", id, "Encontrado:", !!user)
-    return user
-  } catch (error) {
-    console.error("Erro ao buscar usuário por ID:", error)
-    throw error
-  }
+export async function getUserById(id: number): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const db = getDatabase()
+    db.get("SELECT * FROM users WHERE id = ?", [id], (err, row) => {
+      if (err) {
+        reject(err)
+      } else {
+        resolve(row)
+      }
+    })
+  })
 }
 
-export async function updateUser(userId: string, name: string, email: string): Promise<void> {
-  try {
-    const userIndex = users.findIndex((user) => user.id === userId)
-    if (userIndex !== -1) {
-      users[userIndex].name = name
-      users[userIndex].email = email
-      users[userIndex].updated_at = new Date().toISOString()
-      console.log("Usuário atualizado:", userId)
-    } else {
-      throw new Error("Usuário não encontrado")
-    }
-  } catch (error) {
-    console.error("Erro ao atualizar usuário:", error)
-    throw error
-  }
+export async function updateUser(userId: number, name: string, email: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const db = getDatabase()
+    db.run(
+      "UPDATE users SET name = ?, email = ?, updated_at = ? WHERE id = ?",
+      [name, email, new Date().toISOString(), userId],
+      (err) => {
+        if (err) {
+          reject(err)
+        } else {
+          resolve()
+        }
+      },
+    )
+  })
 }
 
-export async function updateUserPassword(userId: string, passwordHash: string): Promise<void> {
-  try {
-    const userIndex = users.findIndex((user) => user.id === userId)
-    if (userIndex !== -1) {
-      users[userIndex].password_hash = passwordHash
-      users[userIndex].updated_at = new Date().toISOString()
-      console.log("Senha atualizada para usuário:", userId)
-    } else {
-      throw new Error("Usuário não encontrado")
-    }
-  } catch (error) {
-    console.error("Erro ao atualizar senha:", error)
-    throw error
-  }
+export async function updateUserPassword(userId: number, passwordHash: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const db = getDatabase()
+    db.run(
+      "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
+      [passwordHash, new Date().toISOString(), userId],
+      (err) => {
+        if (err) {
+          reject(err)
+        } else {
+          resolve()
+        }
+      },
+    )
+  })
 }
 
-export async function updateUser2FA(userId: string, secret: string, enabled: boolean): Promise<void> {
-  try {
-    const userIndex = users.findIndex((user) => user.id === userId)
-    if (userIndex !== -1) {
-      users[userIndex].two_factor_secret = secret
-      users[userIndex].two_factor_enabled = enabled
-      users[userIndex].updated_at = new Date().toISOString()
-      console.log("2FA atualizado para usuário:", userId, "Habilitado:", enabled)
-    } else {
-      throw new Error("Usuário não encontrado")
-    }
-  } catch (error) {
-    console.error("Erro ao atualizar 2FA:", error)
-    throw error
-  }
+export async function updateUser2FA(userId: number, secret: string, enabled: boolean): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const db = getDatabase()
+    db.run(
+      "UPDATE users SET two_factor_secret = ?, two_factor_enabled = ? WHERE id = ?",
+      [secret, enabled ? 1 : 0, userId],
+      (err) => {
+        if (err) {
+          reject(err)
+        } else {
+          resolve()
+        }
+      },
+    )
+  })
+}
+
+export async function updateTempTwoFactorSecret(userId: number, secret: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const db = getDatabase()
+    db.run("UPDATE users SET temp_two_factor_secret = ? WHERE id = ?", [secret, userId], (err) => {
+      if (err) {
+        reject(err)
+      } else {
+        resolve()
+      }
+    })
+  })
 }
 
 // Password operations
 export async function createPassword(
-  userId: string,
+  userId: number,
   title: string,
   username: string,
   encryptedPassword: string,
@@ -231,54 +294,62 @@ export async function createPassword(
   notes?: string,
   category = "other",
 ): Promise<string> {
-  try {
-    const password: Password = {
-      id: uuidv4(),
-      user_id: userId,
-      title,
-      username,
-      encrypted_password: encryptedPassword,
-      url,
-      category,
-      notes,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }
-    passwords.push(password)
-    console.log("Senha criada:", title)
-    return password.id
-  } catch (error) {
-    console.error("Erro ao criar senha:", error)
-    throw error
-  }
+  return new Promise((resolve, reject) => {
+    const db = getDatabase()
+    db.run(
+      "INSERT INTO passwords (id, user_id, title, username, encrypted_password, url, category, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [
+        uuidv4(),
+        userId,
+        title,
+        username,
+        encryptedPassword,
+        url,
+        category,
+        notes,
+        new Date().toISOString(),
+        new Date().toISOString(),
+      ],
+      function (err) {
+        if (err) {
+          reject(err)
+        } else {
+          resolve(this.lastID)
+        }
+      },
+    )
+  })
 }
 
-export async function getPasswordsByUserId(userId: string): Promise<Password[]> {
-  try {
-    const userPasswords = passwords
-      .filter((password) => password.user_id === userId)
-      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-
-    console.log("Senhas encontradas para usuário:", userId, "Quantidade:", userPasswords.length)
-    return userPasswords
-  } catch (error) {
-    console.error("Erro ao buscar senhas:", error)
-    throw error
-  }
+export async function getPasswordsByUserId(userId: number): Promise<any[]> {
+  return new Promise((resolve, reject) => {
+    const db = getDatabase()
+    db.all("SELECT * FROM passwords WHERE user_id = ? ORDER BY updated_at DESC", [userId], (err, rows) => {
+      if (err) {
+        reject(err)
+      } else {
+        resolve(rows)
+      }
+    })
+  })
 }
 
-export async function getPasswordById(id: string, userId: string): Promise<Password | null> {
-  try {
-    return passwords.find((password) => password.id === id && password.user_id === userId) || null
-  } catch (error) {
-    console.error("Erro ao buscar senha por ID:", error)
-    throw error
-  }
+export async function getPasswordById(id: string, userId: number): Promise<any | null> {
+  return new Promise((resolve, reject) => {
+    const db = getDatabase()
+    db.get("SELECT * FROM passwords WHERE id = ? AND user_id = ?", [id, userId], (err, row) => {
+      if (err) {
+        reject(err)
+      } else {
+        resolve(row)
+      }
+    })
+  })
 }
 
 export async function updatePassword(
   id: string,
-  userId: string,
+  userId: number,
   title: string,
   username: string,
   encryptedPassword: string,
@@ -286,109 +357,98 @@ export async function updatePassword(
   notes?: string,
   category = "other",
 ): Promise<void> {
-  try {
-    const passwordIndex = passwords.findIndex((password) => password.id === id && password.user_id === userId)
-    if (passwordIndex !== -1) {
-      passwords[passwordIndex] = {
-        ...passwords[passwordIndex],
-        title,
-        username,
-        encrypted_password: encryptedPassword,
-        url,
-        category,
-        notes,
-        updated_at: new Date().toISOString(),
-      }
-      console.log("Senha atualizada:", title)
-    } else {
-      throw new Error("Senha não encontrada")
-    }
-  } catch (error) {
-    console.error("Erro ao atualizar senha:", error)
-    throw error
-  }
+  return new Promise((resolve, reject) => {
+    const db = getDatabase()
+    db.run(
+      "UPDATE passwords SET title = ?, username = ?, encrypted_password = ?, url = ?, category = ?, notes = ?, updated_at = ? WHERE id = ? AND user_id = ?",
+      [title, username, encryptedPassword, url, category, notes, new Date().toISOString(), id, userId],
+      (err) => {
+        if (err) {
+          reject(err)
+        } else {
+          resolve()
+        }
+      },
+    )
+  })
 }
 
-export async function deletePassword(id: string, userId: string): Promise<void> {
-  try {
-    const passwordIndex = passwords.findIndex((password) => password.id === id && password.user_id === userId)
-    if (passwordIndex !== -1) {
-      const deletedPassword = passwords.splice(passwordIndex, 1)[0]
-      console.log("Senha deletada:", deletedPassword.title)
-    } else {
-      throw new Error("Senha não encontrada")
-    }
-  } catch (error) {
-    console.error("Erro ao deletar senha:", error)
-    throw error
-  }
+export async function deletePassword(id: string, userId: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const db = getDatabase()
+    db.run("DELETE FROM passwords WHERE id = ? AND user_id = ?", [id, userId], (err) => {
+      if (err) {
+        reject(err)
+      } else {
+        resolve()
+      }
+    })
+  })
 }
 
 // Session operations
-export async function createSession(userId: string, token: string, expiresAt: Date): Promise<string> {
-  try {
-    const session: Session = {
-      id: uuidv4(),
-      user_id: userId,
-      token,
-      expires_at: expiresAt.toISOString(),
-      created_at: new Date().toISOString(),
-    }
-    sessions.push(session)
-    return session.id
-  } catch (error) {
-    console.error("Erro ao criar sessão:", error)
-    throw error
-  }
+export async function createSession(userId: number, token: string, expiresAt: Date): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const db = getDatabase()
+    db.run(
+      "INSERT INTO sessions (id, user_id, token, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
+      [uuidv4(), userId, token, expiresAt.toISOString(), new Date().toISOString()],
+      function (err) {
+        if (err) {
+          reject(err)
+        } else {
+          resolve(this.lastID)
+        }
+      },
+    )
+  })
 }
 
-export async function getSessionByToken(token: string): Promise<Session | null> {
-  try {
+export async function getSessionByToken(token: string): Promise<any | null> {
+  return new Promise((resolve, reject) => {
+    const db = getDatabase()
     const now = new Date()
-    return sessions.find((session) => session.token === token && new Date(session.expires_at) > now) || null
-  } catch (error) {
-    console.error("Erro ao buscar sessão:", error)
-    throw error
-  }
+    db.get("SELECT * FROM sessions WHERE token = ? AND expires_at > ?", [token, now.toISOString()], (err, row) => {
+      if (err) {
+        reject(err)
+      } else {
+        resolve(row)
+      }
+    })
+  })
 }
 
 export async function deleteSession(token: string): Promise<void> {
-  try {
-    const sessionIndex = sessions.findIndex((session) => session.token === token)
-    if (sessionIndex !== -1) {
-      sessions.splice(sessionIndex, 1)
-    }
-  } catch (error) {
-    console.error("Erro ao deletar sessão:", error)
-    throw error
-  }
+  return new Promise((resolve, reject) => {
+    const db = getDatabase()
+    db.run("DELETE FROM sessions WHERE token = ?", [token], (err) => {
+      if (err) {
+        reject(err)
+      } else {
+        resolve()
+      }
+    })
+  })
 }
 
 export async function deleteExpiredSessions(): Promise<void> {
-  try {
+  return new Promise((resolve, reject) => {
+    const db = getDatabase()
     const now = new Date()
-    const beforeCount = sessions.length
-    sessions = sessions.filter((session) => new Date(session.expires_at) > now)
-    const afterCount = sessions.length
-    if (beforeCount !== afterCount) {
-      console.log("Sessões expiradas removidas:", beforeCount - afterCount)
-    }
-  } catch (error) {
-    console.error("Erro ao limpar sessões expiradas:", error)
-    throw error
-  }
+    db.run("DELETE FROM sessions WHERE expires_at <= ?", [now.toISOString()], (err) => {
+      if (err) {
+        reject(err)
+      } else {
+        resolve()
+      }
+    })
+  })
 }
 
 // Utility functions
-export async function getDatabase() {
-  initializeDatabase()
-  return {
-    users,
-    passwords,
-    sessions,
-  }
-}
-
 export async function closeDatabase() {
-  // No-op for in-memory database
+  if (db) {
+    db.close()
+    db = null
+  }
 }

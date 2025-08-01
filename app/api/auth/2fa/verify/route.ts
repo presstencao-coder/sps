@@ -1,14 +1,17 @@
 import { type NextRequest, NextResponse } from "next/server"
 import jwt from "jsonwebtoken"
 import { authenticator } from "otplib"
-import { getDatabase } from "@/lib/database"
+import { getUserById, updateUser2FA } from "@/lib/database"
 
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"
 
 export async function POST(request: NextRequest) {
   try {
+    console.log("=== 2FA VERIFY POST ===")
+
     const authHeader = request.headers.get("authorization")
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      console.log("Token não fornecido")
       return NextResponse.json({ error: "Token não fornecido" }, { status: 401 })
     }
 
@@ -17,23 +20,30 @@ export async function POST(request: NextRequest) {
 
     try {
       decoded = jwt.verify(token, JWT_SECRET)
+      console.log("Token decodificado:", decoded)
     } catch (error) {
+      console.error("JWT verification error:", error)
       return NextResponse.json({ error: "Token inválido" }, { status: 401 })
     }
 
     const { code } = await request.json()
+    console.log("Código recebido:", code)
+
     if (!code || code.length !== 6) {
+      console.log("Código inválido")
       return NextResponse.json({ error: "Código de verificação inválido" }, { status: 400 })
     }
 
     const userId = decoded.userId
-    const db = getDatabase()
 
     // Buscar usuário e secret temporário
-    const user = db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any
+    const user = await getUserById(userId)
     if (!user || !user.temp_two_factor_secret) {
+      console.log("Secret 2FA temporário não encontrado")
       return NextResponse.json({ error: "Secret 2FA não encontrado" }, { status: 400 })
     }
+
+    console.log("Verificando código com secret temporário")
 
     // Verificar código
     const isValid = authenticator.verify({
@@ -43,17 +53,14 @@ export async function POST(request: NextRequest) {
     })
 
     if (!isValid) {
+      console.log("Código de verificação inválido")
       return NextResponse.json({ error: "Código de verificação inválido" }, { status: 400 })
     }
 
+    console.log("Código válido! Ativando 2FA permanentemente")
+
     // Ativar 2FA permanentemente
-    db.prepare(`
-      UPDATE users 
-      SET two_factor_secret = ?, 
-          two_factor_enabled = 1, 
-          temp_two_factor_secret = NULL 
-      WHERE id = ?
-    `).run(user.temp_two_factor_secret, userId)
+    await updateUser2FA(userId, user.temp_two_factor_secret, true)
 
     // Gerar token final
     const finalToken = jwt.sign(
@@ -66,16 +73,29 @@ export async function POST(request: NextRequest) {
       { expiresIn: "7d" },
     )
 
+    console.log("Token final gerado")
+
     // Buscar dados atualizados do usuário
-    const updatedUser = db.prepare("SELECT id, name, email, two_factor_enabled FROM users WHERE id = ?").get(userId)
+    const updatedUser = await getUserById(userId)
 
     return NextResponse.json({
       token: finalToken,
-      user: updatedUser,
+      user: {
+        id: updatedUser.id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        twoFactorEnabled: updatedUser.two_factor_enabled === 1,
+      },
       message: "2FA configurado com sucesso",
     })
-  } catch (error) {
-    console.error("2FA verify error:", error)
-    return NextResponse.json({ error: "Erro interno do servidor" }, { status: 500 })
+  } catch (error: any) {
+    console.error("=== ERRO NO 2FA VERIFY ===", error)
+    return NextResponse.json(
+      {
+        error: "Erro interno do servidor",
+        details: process.env.NODE_ENV === "development" ? error.message : undefined,
+      },
+      { status: 500 },
+    )
   }
 }
