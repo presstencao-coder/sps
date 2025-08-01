@@ -10,11 +10,11 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Eye, EyeOff, Shield } from "lucide-react"
 
 interface LoginFormProps {
-  onLoginSuccess: (userData: any) => void
-  onSwitchToRegister: () => void
+  onSuccess: (token: string, requiresTwoFactor: boolean) => void
+  onShowRegister: () => void
 }
 
-export function LoginForm({ onLoginSuccess, onSwitchToRegister }: LoginFormProps) {
+export function LoginForm({ onSuccess, onShowRegister }: LoginFormProps) {
   const [email, setEmail] = useState("admin@example.com") // Pre-fill for demo
   const [password, setPassword] = useState("admin123") // Pre-fill for demo
   const [showPassword, setShowPassword] = useState(false)
@@ -54,7 +54,7 @@ export function LoginForm({ onLoginSuccess, onSwitchToRegister }: LoginFormProps
 
       if (response.ok && data.success) {
         console.log("Login bem-sucedido")
-        onLoginSuccess(data)
+        onSuccess(data.token, data.requiresTwoFactor || false)
       } else {
         console.error("Login falhou:", data.error)
         setError(data.error || "Erro ao fazer login")
@@ -143,7 +143,7 @@ export function LoginForm({ onLoginSuccess, onSwitchToRegister }: LoginFormProps
             <div className="text-center space-y-2">
               <button
                 type="button"
-                onClick={onSwitchToRegister}
+                onClick={onShowRegister}
                 className="text-sm text-blue-600 hover:text-blue-700 underline"
                 disabled={isLoading}
               >
