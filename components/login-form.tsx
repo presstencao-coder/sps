@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,13 +10,13 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Eye, EyeOff, Shield } from "lucide-react"
 
 interface LoginFormProps {
-  onSuccess: (email: string) => void
+  onSuccess: (token: string, requiresTwoFactor: boolean) => void
   onShowRegister: () => void
 }
 
 export function LoginForm({ onSuccess, onShowRegister }: LoginFormProps) {
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
+  const [email, setEmail] = useState("admin@example.com") // Pre-fill for demo
+  const [password, setPassword] = useState("admin123") // Pre-fill for demo
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
@@ -37,12 +36,18 @@ export function LoginForm({ onSuccess, onShowRegister }: LoginFormProps) {
       const data = await response.json()
 
       if (response.ok) {
-        localStorage.setItem("auth_token", data.token)
-        onSuccess(email)
+        if (data.requiresTwoFactor) {
+          // Usuário precisa configurar 2FA
+          onSuccess(data.token || "", true)
+        } else {
+          // Login completo
+          onSuccess(data.token, false)
+        }
       } else {
         setError(data.error || "Erro ao fazer login")
       }
     } catch (error) {
+      console.error("Erro no login:", error)
       setError("Erro de conexão")
     } finally {
       setIsLoading(false)
@@ -50,14 +55,14 @@ export function LoginForm({ onSuccess, onShowRegister }: LoginFormProps) {
   }
 
   return (
-    <div className="flex items-center justify-center min-h-[60vh]">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900">
             <Shield className="h-6 w-6 text-blue-600 dark:text-blue-400" />
           </div>
-          <CardTitle className="text-2xl">Login Seguro</CardTitle>
-          <CardDescription>Acesse seu cofre de senhas com autenticação 2FA</CardDescription>
+          <CardTitle className="text-2xl">SecureVault</CardTitle>
+          <CardDescription>Acesse seu cofre de senhas seguro</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -104,7 +109,7 @@ export function LoginForm({ onSuccess, onShowRegister }: LoginFormProps) {
               {isLoading ? "Entrando..." : "Entrar"}
             </Button>
 
-            <div className="text-center">
+            <div className="text-center space-y-2">
               <button
                 type="button"
                 onClick={onShowRegister}
@@ -112,6 +117,14 @@ export function LoginForm({ onSuccess, onShowRegister }: LoginFormProps) {
               >
                 Não tem uma conta? Criar conta
               </button>
+
+              <div className="text-xs text-gray-500 bg-gray-50 dark:bg-gray-800 p-3 rounded-lg">
+                <p>
+                  <strong>Demo:</strong>
+                </p>
+                <p>Email: admin@example.com</p>
+                <p>Senha: admin123</p>
+              </div>
             </div>
           </form>
         </CardContent>

@@ -26,16 +26,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Credenciais inválidas" }, { status: 401 })
     }
 
-    // Check if 2FA is enabled
+    // Check if 2FA is enabled and configured
     if (user.two_factor_enabled && user.two_factor_secret) {
       if (!twoFactorCode) {
-        return NextResponse.json(
+        // Generate temporary token for 2FA setup
+        const tempToken = jwt.sign(
           {
-            error: "Código 2FA necessário",
-            requiresTwoFactor: true,
+            userId: user.id,
+            email: user.email,
+            twoFactorVerified: false,
+            temp: true,
           },
-          { status: 200 },
+          JWT_SECRET,
+          { expiresIn: "10m" },
         )
+
+        return NextResponse.json({
+          requiresTwoFactor: true,
+          token: tempToken,
+          message: "Código 2FA necessário",
+        })
       }
 
       // Verify 2FA code
@@ -54,20 +64,25 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Generate JWT token
+    // Generate final JWT token
     const token = jwt.sign(
       {
         userId: user.id,
         email: user.email,
+        name: user.name,
         twoFactorVerified: user.two_factor_enabled ? true : false,
       },
       JWT_SECRET,
       { expiresIn: "24h" },
     )
 
+    // If user doesn't have 2FA enabled, they need to set it up
+    const needsTwoFactorSetup = !user.two_factor_enabled
+
     return NextResponse.json({
       success: true,
       token,
+      requiresTwoFactor: needsTwoFactorSetup,
       user: {
         id: user.id,
         name: user.name,

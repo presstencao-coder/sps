@@ -13,44 +13,87 @@ interface AuthWrapperProps {
 export function AuthWrapper({ children }: AuthWrapperProps) {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [showTwoFactor, setShowTwoFactor] = useState(false)
-  const [userEmail, setUserEmail] = useState("")
   const [showRegister, setShowRegister] = useState(false)
+  const [userToken, setUserToken] = useState("")
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     // Verificar se já está autenticado
-    const authToken = localStorage.getItem("auth_token")
-    const twoFactorVerified = localStorage.getItem("2fa_verified")
-
-    if (authToken && twoFactorVerified) {
-      setIsAuthenticated(true)
+    const token = localStorage.getItem("token")
+    if (token) {
+      // Verificar se o token é válido
+      verifyToken(token)
+    } else {
+      setIsLoading(false)
     }
   }, [])
 
-  const handleLoginSuccess = (email: string) => {
-    setUserEmail(email)
-    setShowTwoFactor(true)
+  const verifyToken = async (token: string) => {
+    try {
+      // Decodificar o token para verificar se tem 2FA
+      const payload = JSON.parse(atob(token.split(".")[1]))
+
+      if (payload.twoFactorVerified === true) {
+        setIsAuthenticated(true)
+      } else {
+        // Token válido mas sem 2FA verificado
+        setUserToken(token)
+        setShowTwoFactor(true)
+      }
+    } catch (error) {
+      // Token inválido, remover
+      localStorage.removeItem("token")
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  const handleTwoFactorSuccess = () => {
-    setIsAuthenticated(true)
+  const handleLoginSuccess = (token: string, requiresTwoFactor: boolean) => {
+    setUserToken(token)
+    localStorage.setItem("token", token)
+
+    if (requiresTwoFactor) {
+      setShowTwoFactor(true)
+    } else {
+      setIsAuthenticated(true)
+    }
+  }
+
+  const handleTwoFactorComplete = () => {
     setShowTwoFactor(false)
-    localStorage.setItem("2fa_verified", "true")
+    setIsAuthenticated(true)
+  }
+
+  const handleRegisterSuccess = (token: string) => {
+    setUserToken(token)
+    localStorage.setItem("token", token)
+    setShowRegister(false)
+    setShowTwoFactor(true) // Sempre mostrar 2FA após registro
   }
 
   const handleLogout = () => {
-    localStorage.removeItem("auth_token")
-    localStorage.removeItem("2fa_verified")
+    localStorage.removeItem("token")
     setIsAuthenticated(false)
     setShowTwoFactor(false)
+    setShowRegister(false)
+    setUserToken("")
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    )
   }
 
   if (!isAuthenticated) {
     if (showTwoFactor) {
-      return <TwoFactorAuth email={userEmail} onSuccess={handleTwoFactorSuccess} />
+      return <TwoFactorAuth onComplete={handleTwoFactorComplete} />
     }
 
     if (showRegister) {
-      return <RegisterForm onSuccess={handleLoginSuccess} onBackToLogin={() => setShowRegister(false)} />
+      return <RegisterForm onSuccess={handleRegisterSuccess} onBackToLogin={() => setShowRegister(false)} />
     }
 
     return <LoginForm onSuccess={handleLoginSuccess} onShowRegister={() => setShowRegister(true)} />
