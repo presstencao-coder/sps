@@ -1,14 +1,22 @@
 import crypto from "crypto"
+import bcrypt from "bcryptjs"
 
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || "default-key-change-this-in-production-32-chars"
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || "default-key-change-in-production-32-chars"
 const ALGORITHM = "aes-256-gcm"
+
+export function hashPassword(password: string): string {
+  return bcrypt.hashSync(password, 12)
+}
+
+export function verifyPassword(password: string, hash: string): boolean {
+  return bcrypt.compareSync(password, hash)
+}
 
 export function encrypt(text: string): string {
   try {
-    // Garantir que a chave tenha 32 bytes
+    // Ensure key is 32 bytes
     const key = crypto.scryptSync(ENCRYPTION_KEY, "salt", 32)
     const iv = crypto.randomBytes(16)
-
     const cipher = crypto.createCipher(ALGORITHM, key)
 
     let encrypted = cipher.update(text, "utf8", "hex")
@@ -16,29 +24,27 @@ export function encrypt(text: string): string {
 
     const authTag = cipher.getAuthTag()
 
-    // Retornar: iv:authTag:encrypted
     return iv.toString("hex") + ":" + authTag.toString("hex") + ":" + encrypted
   } catch (error) {
-    console.error("❌ Erro ao criptografar:", error)
-    // Fallback para base64 se a criptografia falhar
+    console.error("Encryption error:", error)
+    // Fallback to base64 encoding
     return Buffer.from(text).toString("base64")
   }
 }
 
-export function decrypt(encryptedData: string): string {
+export function decrypt(encryptedText: string): string {
   try {
-    const parts = encryptedData.split(":")
+    const parts = encryptedText.split(":")
+
     if (parts.length !== 3) {
-      // Fallback: assumir que é base64
-      return Buffer.from(encryptedData, "base64").toString("utf8")
+      // Try base64 decoding as fallback
+      return Buffer.from(encryptedText, "base64").toString("utf8")
     }
 
+    const key = crypto.scryptSync(ENCRYPTION_KEY, "salt", 32)
     const iv = Buffer.from(parts[0], "hex")
     const authTag = Buffer.from(parts[1], "hex")
     const encrypted = parts[2]
-
-    // Garantir que a chave tenha 32 bytes
-    const key = crypto.scryptSync(ENCRYPTION_KEY, "salt", 32)
 
     const decipher = crypto.createDecipher(ALGORITHM, key)
     decipher.setAuthTag(authTag)
@@ -48,40 +54,16 @@ export function decrypt(encryptedData: string): string {
 
     return decrypted
   } catch (error) {
-    console.error("❌ Erro ao descriptografar:", error)
-    // Fallback para base64 se a descriptografia falhar
+    console.error("Decryption error:", error)
+    // Fallback to base64 decoding
     try {
-      return Buffer.from(encryptedData, "base64").toString("utf8")
+      return Buffer.from(encryptedText, "base64").toString("utf8")
     } catch {
-      return encryptedData
+      return encryptedText
     }
   }
 }
 
-// Hash de senha usando bcrypt-like com crypto nativo
-export function hashPassword(password: string): string {
-  const salt = crypto.randomBytes(16).toString("hex")
-  const hash = crypto.pbkdf2Sync(password, salt, 10000, 64, "sha512").toString("hex")
-  return `${salt}:${hash}`
-}
-
-export function verifyPassword(password: string, hashedPassword: string): boolean {
-  try {
-    const [salt, hash] = hashedPassword.split(":")
-    const verifyHash = crypto.pbkdf2Sync(password, salt, 10000, 64, "sha512").toString("hex")
-    return hash === verifyHash
-  } catch (error) {
-    console.error("❌ Erro na verificação de senha:", error)
-    return false
-  }
-}
-
-// Função para gerar uma chave segura
-export function generateEncryptionKey(): string {
+export function generateSecretKey(): string {
   return crypto.randomBytes(32).toString("hex")
-}
-
-// Gerar token JWT
-export function generateJWTSecret(): string {
-  return crypto.randomBytes(64).toString("hex")
 }

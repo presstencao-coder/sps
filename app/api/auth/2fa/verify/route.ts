@@ -1,43 +1,71 @@
 import { type NextRequest, NextResponse } from "next/server"
+import jwt from "jsonwebtoken"
 import { authenticator } from "otplib"
-import { getUserByEmail, updateUser2FA } from "@/lib/database"
+import { getUserById, updateUser2FA } from "@/lib/database"
+
+const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, code } = await request.json()
+    const { token: otpToken } = await request.json()
 
-    if (!email || !code) {
-      return NextResponse.json({ error: "Email e código são obrigatórios" }, { status: 400 })
+    if (!otpToken) {
+      return NextResponse.json({ error: "Código não fornecido" }, { status: 400 })
     }
 
-    // Buscar usuário no banco
-    const user = await getUserByEmail(email)
-    if (!user) {
-      return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 })
+    const authHeader = request.headers.get("authorization")
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return NextResponse.json({ error: "Token de autorização não fornecido" }, { status: 401 })
     }
 
-    // Verificar se o usuário tem um secret configurado
-    if (!user.two_factor_secret) {
-      return NextResponse.json({ error: "2FA não configurado para este usuário" }, { status: 400 })
+    const jwtToken = authHeader.substring(7)
+    let decoded: any
+
+    try {
+      decoded = jwt.verify(jwtToken, JWT_SECRET)
+    } catch (error) {
+      return NextResponse.json({ error: "Token inválido" }, { status: 401 })
     }
 
-    // Verificar código 2FA usando o secret do usuário
+    const user = await getUserById(decoded.userId)
+    if (!user || !user.two_factor_secret) {
+      return NextResponse.json({ error: "Usuário não encontrado ou 2FA não configurado" }, { status: 404 })
+    }
+
+    // Set options for token verification with time window
+    authenticator.options = {
+      window: 2, // Allow 2 time steps before and after current time
+      step: 30, // 30 second time step
+    }
+
+    // Verify the token
     const isValid = authenticator.verify({
-      token: code,
+      token: otpToken,
       secret: user.two_factor_secret,
-      window: 2, // Permite uma janela de tempo maior para compensar diferenças de relógio
     })
 
     if (!isValid) {
-      return NextResponse.json({ error: "Código inválido ou expirado" }, { status: 401 })
+      return NextResponse.json({ error: "Código inválido" }, { status: 400 })
     }
 
-    // Ativar 2FA para o usuário após verificação bem-sucedida
+    // Enable 2FA for the user
     await updateUser2FA(user.id, user.two_factor_secret, true)
+
+    // Generate a new JWT token with 2FA verified
+    const newToken = jwt.sign(
+      {
+        userId: user.id,
+        email: user.email,
+        twoFactorVerified: true,
+      },
+      JWT_SECRET,
+      { expiresIn: "24h" },
+    )
 
     return NextResponse.json({
       success: true,
-      message: "2FA verificado e ativado com sucesso",
+      message: "2FA verificado com sucesso",
+      token: newToken,
     })
   } catch (error) {
     console.error("Erro na verificação 2FA:", error)
