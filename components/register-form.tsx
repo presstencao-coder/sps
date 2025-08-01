@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Shield, Eye, EyeOff, Loader2, ArrowLeft } from "lucide-react"
+import { Shield, Eye, EyeOff, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
 interface RegisterFormProps {
@@ -16,33 +16,33 @@ interface RegisterFormProps {
   onSwitchToLogin: () => void
 }
 
-export function RegisterForm({ onRegisterSuccess, onSwitchToLogin }: RegisterFormProps) {
-  const [name, setName] = useState("")
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [confirmPassword, setConfirmPassword] = useState("")
+export default function RegisterForm({ onRegisterSuccess, onSwitchToLogin }: RegisterFormProps) {
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
+  })
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsLoading(true)
     setError("")
 
-    // Validações
-    if (password !== confirmPassword) {
+    if (formData.password !== formData.confirmPassword) {
       setError("As senhas não coincidem")
-      setIsLoading(false)
       return
     }
 
-    if (password.length < 6) {
+    if (formData.password.length < 6) {
       setError("A senha deve ter pelo menos 6 caracteres")
-      setIsLoading(false)
       return
     }
+
+    setLoading(true)
 
     try {
       const response = await fetch("/api/auth/register", {
@@ -50,7 +50,11 @@ export function RegisterForm({ onRegisterSuccess, onSwitchToLogin }: RegisterFor
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email,
+          password: formData.password,
+        }),
       })
 
       const data = await response.json()
@@ -60,81 +64,81 @@ export function RegisterForm({ onRegisterSuccess, onSwitchToLogin }: RegisterFor
         onRegisterSuccess()
       } else {
         setError(data.error || "Erro ao criar conta")
-        toast.error(data.error || "Erro ao criar conta")
       }
     } catch (error) {
-      console.error("Register error:", error)
-      setError("Erro de conexão. Tente novamente.")
-      toast.error("Erro de conexão")
+      setError("Erro de conexão")
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
   }
 
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData((prev) => ({
+      ...prev,
+      [e.target.name]: e.target.value,
+    }))
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 p-4">
-      <Card className="w-full max-w-md shadow-2xl border-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl">
-        <CardHeader className="space-y-4 text-center">
-          <div className="flex justify-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-r from-green-600 to-emerald-600 shadow-lg">
-              <Shield className="h-8 w-8 text-white" />
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-slate-900 dark:to-slate-800 p-4">
+      <Card className="w-full max-w-md shadow-xl">
+        <CardHeader className="space-y-1 text-center">
+          <div className="flex justify-center mb-4">
+            <div className="p-3 bg-blue-100 dark:bg-blue-900 rounded-full">
+              <Shield className="h-8 w-8 text-blue-600 dark:text-blue-400" />
             </div>
           </div>
-          <div>
-            <CardTitle className="text-2xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
-              Criar Conta
-            </CardTitle>
-            <CardDescription className="text-slate-600 dark:text-slate-400">
-              Crie sua conta no SecureVault
-            </CardDescription>
-          </div>
+          <CardTitle className="text-2xl font-bold">Criar Conta</CardTitle>
+          <CardDescription>Crie sua conta para começar a usar o gerenciador de senhas</CardDescription>
         </CardHeader>
-
-        <CardContent className="space-y-6">
+        <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+
             <div className="space-y-2">
-              <Label htmlFor="name" className="text-slate-700 dark:text-slate-300">
-                Nome completo
-              </Label>
+              <Label htmlFor="name">Nome</Label>
               <Input
                 id="name"
+                name="name"
                 type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Seu nome completo"
+                placeholder="Seu nome"
+                value={formData.name}
+                onChange={handleChange}
                 required
-                className="h-11 border-slate-300 dark:border-slate-600 focus:border-green-500 dark:focus:border-green-400"
+                disabled={loading}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-slate-700 dark:text-slate-300">
-                Email
-              </Label>
+              <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
+                name="email"
                 type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
                 placeholder="seu@email.com"
+                value={formData.email}
+                onChange={handleChange}
                 required
-                className="h-11 border-slate-300 dark:border-slate-600 focus:border-green-500 dark:focus:border-green-400"
+                disabled={loading}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-slate-700 dark:text-slate-300">
-                Senha
-              </Label>
+              <Label htmlFor="password">Senha</Label>
               <div className="relative">
                 <Input
                   id="password"
+                  name="password"
                   type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Sua senha (mín. 6 caracteres)"
+                  placeholder="Sua senha"
+                  value={formData.password}
+                  onChange={handleChange}
                   required
-                  className="h-11 pr-10 border-slate-300 dark:border-slate-600 focus:border-green-500 dark:focus:border-green-400"
+                  disabled={loading}
                 />
                 <Button
                   type="button"
@@ -142,29 +146,25 @@ export function RegisterForm({ onRegisterSuccess, onSwitchToLogin }: RegisterFor
                   size="sm"
                   className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                   onClick={() => setShowPassword(!showPassword)}
+                  disabled={loading}
                 >
-                  {showPassword ? (
-                    <EyeOff className="h-4 w-4 text-slate-400" />
-                  ) : (
-                    <Eye className="h-4 w-4 text-slate-400" />
-                  )}
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </Button>
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword" className="text-slate-700 dark:text-slate-300">
-                Confirmar senha
-              </Label>
+              <Label htmlFor="confirmPassword">Confirmar Senha</Label>
               <div className="relative">
                 <Input
                   id="confirmPassword"
+                  name="confirmPassword"
                   type={showConfirmPassword ? "text" : "password"}
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Confirme sua senha"
+                  value={formData.confirmPassword}
+                  onChange={handleChange}
                   required
-                  className="h-11 pr-10 border-slate-300 dark:border-slate-600 focus:border-green-500 dark:focus:border-green-400"
+                  disabled={loading}
                 />
                 <Button
                   type="button"
@@ -172,43 +172,37 @@ export function RegisterForm({ onRegisterSuccess, onSwitchToLogin }: RegisterFor
                   size="sm"
                   className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  disabled={loading}
                 >
-                  {showConfirmPassword ? (
-                    <EyeOff className="h-4 w-4 text-slate-400" />
-                  ) : (
-                    <Eye className="h-4 w-4 text-slate-400" />
-                  )}
+                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </Button>
               </div>
             </div>
 
-            {error && (
-              <Alert className="bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800">
-                <AlertDescription className="text-red-800 dark:text-red-200">{error}</AlertDescription>
-              </Alert>
-            )}
-
-            <div className="flex space-x-3">
-              <Button type="button" variant="outline" onClick={onSwitchToLogin} className="flex-1 h-11 bg-transparent">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Voltar
-              </Button>
-              <Button
-                type="submit"
-                className="flex-1 h-11 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-200"
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Criando...
-                  </>
-                ) : (
-                  "Criar Conta"
-                )}
-              </Button>
-            </div>
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Criando conta...
+                </>
+              ) : (
+                "Criar Conta"
+              )}
+            </Button>
           </form>
+
+          <div className="mt-6 text-center">
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Já tem uma conta?{" "}
+              <button
+                onClick={onSwitchToLogin}
+                className="text-blue-600 hover:text-blue-500 font-medium"
+                disabled={loading}
+              >
+                Fazer login
+              </button>
+            </p>
+          </div>
         </CardContent>
       </Card>
     </div>

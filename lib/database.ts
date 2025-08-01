@@ -39,132 +39,143 @@ const DB_PATH = process.env.SQLITE_PATH || path.join(process.cwd(), "database.sq
 
 let db: sqlite3.Database | null = null
 
-export function getDatabase(): sqlite3.Database {
-  if (!db) {
-    db = new sqlite3.Database(DB_PATH)
-  }
-  return db
+export function getDatabase(): Promise<sqlite3.Database> {
+  return new Promise((resolve, reject) => {
+    const db = new sqlite3.Database(DB_PATH, (err) => {
+      if (err) {
+        reject(err)
+      } else {
+        resolve(db)
+      }
+    })
+  })
 }
 
 // Initialize with demo data
 function initializeDatabase() {
-  const db = getDatabase()
-  db.serialize(() => {
-    db.run(
-      "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, email TEXT, password TEXT, two_factor_secret TEXT, two_factor_enabled INTEGER, created_at TEXT, updated_at TEXT)",
-    )
-    db.run(
-      "CREATE TABLE IF NOT EXISTS passwords (id TEXT PRIMARY KEY, user_id INTEGER, title TEXT, username TEXT, encrypted_password TEXT, url TEXT, category TEXT, notes TEXT, created_at TEXT, updated_at TEXT)",
-    )
-    db.run(
-      "CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, user_id INTEGER, token TEXT, expires_at TEXT, created_at TEXT)",
-    )
+  getDatabase()
+    .then((db) => {
+      db.serialize(() => {
+        db.run(
+          "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, email TEXT, password_hash TEXT, two_factor_secret TEXT, two_factor_enabled INTEGER, created_at TEXT, updated_at TEXT)",
+        )
+        db.run(
+          "CREATE TABLE IF NOT EXISTS passwords (id TEXT PRIMARY KEY, user_id INTEGER, title TEXT, username TEXT, encrypted_password TEXT, url TEXT, category TEXT, notes TEXT, created_at TEXT, updated_at TEXT)",
+        )
+        db.run(
+          "CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, user_id INTEGER, token TEXT, expires_at TEXT, created_at TEXT)",
+        )
 
-    const adminUserStmt = db.prepare(
-      "INSERT INTO users (name, email, password, two_factor_enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-    )
-    const adminUser = {
-      name: "Administrador",
-      email: "admin@example.com",
-      password: bcrypt.hashSync("admin123", 10),
-      two_factor_enabled: 0,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }
-    adminUserStmt.run(
-      adminUser.name,
-      adminUser.email,
-      adminUser.password,
-      adminUser.two_factor_enabled,
-      adminUser.created_at,
-      adminUser.updated_at,
-    )
-    adminUserStmt.finalize()
-    console.log("Usuário admin criado:", adminUser.email)
+        const adminUserStmt = db.prepare(
+          "INSERT INTO users (name, email, password_hash, two_factor_enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        const adminUser = {
+          name: "Administrador",
+          email: "admin@example.com",
+          password_hash: bcrypt.hashSync("admin123", 10),
+          two_factor_enabled: 0,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }
+        adminUserStmt.run(
+          adminUser.name,
+          adminUser.email,
+          adminUser.password_hash,
+          adminUser.two_factor_enabled,
+          adminUser.created_at,
+          adminUser.updated_at,
+        )
+        adminUserStmt.finalize()
+        console.log("Usuário admin criado:", adminUser.email)
 
-    const samplePasswordsStmt = db.prepare(
-      "INSERT INTO passwords (id, user_id, title, username, encrypted_password, url, category, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    )
-    const samplePasswords: Password[] = [
-      {
-        id: uuidv4(),
-        user_id: 1,
-        title: "Gmail",
-        username: "admin@gmail.com",
-        encrypted_password: Buffer.from("MySecureGmailPass123!").toString("base64"),
-        url: "https://gmail.com",
-        category: "email",
-        notes: "Personal email account",
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      {
-        id: uuidv4(),
-        user_id: 1,
-        title: "Facebook",
-        username: "admin@example.com",
-        encrypted_password: Buffer.from("FacebookSecure456!").toString("base64"),
-        url: "https://facebook.com",
-        category: "social",
-        notes: "Social media account",
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      {
-        id: uuidv4(),
-        user_id: 1,
-        title: "Banco do Brasil",
-        username: "admin123",
-        encrypted_password: Buffer.from("BankSecure789!").toString("base64"),
-        url: "https://bb.com.br",
-        category: "banking",
-        notes: "Banking account - handle with care",
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      {
-        id: uuidv4(),
-        user_id: 1,
-        title: "GitHub",
-        username: "admin-dev",
-        encrypted_password: Buffer.from("GitHubDev2024!").toString("base64"),
-        url: "https://github.com",
-        category: "work",
-        notes: "Development repositories",
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      {
-        id: uuidv4(),
-        user_id: 1,
-        title: "AWS Console",
-        username: "admin@company.com",
-        encrypted_password: Buffer.from("AWSSecure2024!").toString("base64"),
-        url: "https://aws.amazon.com",
-        category: "work",
-        notes: "Cloud infrastructure management",
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-    ]
+        const samplePasswordsStmt = db.prepare(
+          "INSERT INTO passwords (id, user_id, title, username, encrypted_password, url, category, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        const samplePasswords: Password[] = [
+          {
+            id: uuidv4(),
+            user_id: 1,
+            title: "Gmail",
+            username: "admin@gmail.com",
+            encrypted_password: Buffer.from("MySecureGmailPass123!").toString("base64"),
+            url: "https://gmail.com",
+            category: "email",
+            notes: "Personal email account",
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          {
+            id: uuidv4(),
+            user_id: 1,
+            title: "Facebook",
+            username: "admin@example.com",
+            encrypted_password: Buffer.from("FacebookSecure456!").toString("base64"),
+            url: "https://facebook.com",
+            category: "social",
+            notes: "Social media account",
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          {
+            id: uuidv4(),
+            user_id: 1,
+            title: "Banco do Brasil",
+            username: "admin123",
+            encrypted_password: Buffer.from("BankSecure789!").toString("base64"),
+            url: "https://bb.com.br",
+            category: "banking",
+            notes: "Banking account - handle with care",
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          {
+            id: uuidv4(),
+            user_id: 1,
+            title: "GitHub",
+            username: "admin-dev",
+            encrypted_password: Buffer.from("GitHubDev2024!").toString("base64"),
+            url: "https://github.com",
+            category: "work",
+            notes: "Development repositories",
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          {
+            id: uuidv4(),
+            user_id: 1,
+            title: "AWS Console",
+            username: "admin@company.com",
+            encrypted_password: Buffer.from("AWSSecure2024!").toString("base64"),
+            url: "https://aws.amazon.com",
+            category: "work",
+            notes: "Cloud infrastructure management",
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+        ]
 
-    samplePasswords.forEach((password) => {
-      samplePasswordsStmt.run(
-        password.id,
-        password.user_id,
-        password.title,
-        password.username,
-        password.encrypted_password,
-        password.url,
-        password.category,
-        password.notes,
-        password.created_at,
-        password.updated_at,
-      )
+        samplePasswords.forEach((password) => {
+          samplePasswordsStmt.run(
+            password.id,
+            password.user_id,
+            password.title,
+            password.username,
+            password.encrypted_password,
+            password.url,
+            password.category,
+            password.notes,
+            password.created_at,
+            password.updated_at,
+          )
+        })
+        samplePasswordsStmt.finalize()
+        console.log(`${samplePasswords.length} senhas de exemplo criadas`)
+      })
+      db.close()
     })
-    samplePasswordsStmt.finalize()
-    console.log(`${samplePasswords.length} senhas de exemplo criadas`)
-  })
+    .catch((err) => {
+      console.error("Erro ao inicializar o banco de dados:", err)
+    })
 }
 
 // Initialize database
@@ -175,10 +186,10 @@ export async function createUser(name: string, email: string, password: string):
   return new Promise(async (resolve, reject) => {
     try {
       const hashedPassword = await bcrypt.hash(password, 10)
-      const db = getDatabase()
+      const db = await getDatabase()
 
       db.run(
-        "INSERT INTO users (name, email, password) VALUES (?, ?, ?)",
+        "INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)",
         [name, email, hashedPassword],
         function (err) {
           if (err) {
@@ -188,6 +199,7 @@ export async function createUser(name: string, email: string, password: string):
           }
         },
       )
+      db.close()
     } catch (error) {
       reject(error)
     }
@@ -195,34 +207,36 @@ export async function createUser(name: string, email: string, password: string):
 }
 
 export async function getUserByEmail(email: string): Promise<any> {
-  return new Promise((resolve, reject) => {
-    const db = getDatabase()
+  return new Promise(async (resolve, reject) => {
+    const db = await getDatabase()
     db.get("SELECT * FROM users WHERE email = ?", [email], (err, row) => {
       if (err) {
         reject(err)
       } else {
         resolve(row)
       }
+      db.close()
     })
   })
 }
 
 export async function getUserById(id: number): Promise<any> {
-  return new Promise((resolve, reject) => {
-    const db = getDatabase()
+  return new Promise(async (resolve, reject) => {
+    const db = await getDatabase()
     db.get("SELECT * FROM users WHERE id = ?", [id], (err, row) => {
       if (err) {
         reject(err)
       } else {
         resolve(row)
       }
+      db.close()
     })
   })
 }
 
 export async function updateUser(userId: number, name: string, email: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const db = getDatabase()
+  return new Promise(async (resolve, reject) => {
+    const db = await getDatabase()
     db.run(
       "UPDATE users SET name = ?, email = ?, updated_at = ? WHERE id = ?",
       [name, email, new Date().toISOString(), userId],
@@ -232,14 +246,15 @@ export async function updateUser(userId: number, name: string, email: string): P
         } else {
           resolve()
         }
+        db.close()
       },
     )
   })
 }
 
 export async function updateUserPassword(userId: number, passwordHash: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const db = getDatabase()
+  return new Promise(async (resolve, reject) => {
+    const db = await getDatabase()
     db.run(
       "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
       [passwordHash, new Date().toISOString(), userId],
@@ -249,14 +264,15 @@ export async function updateUserPassword(userId: number, passwordHash: string): 
         } else {
           resolve()
         }
+        db.close()
       },
     )
   })
 }
 
 export async function updateUser2FA(userId: number, secret: string, enabled: boolean): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const db = getDatabase()
+  return new Promise(async (resolve, reject) => {
+    const db = await getDatabase()
     db.run(
       "UPDATE users SET two_factor_secret = ?, two_factor_enabled = ? WHERE id = ?",
       [secret, enabled ? 1 : 0, userId],
@@ -266,20 +282,22 @@ export async function updateUser2FA(userId: number, secret: string, enabled: boo
         } else {
           resolve()
         }
+        db.close()
       },
     )
   })
 }
 
 export async function updateTempTwoFactorSecret(userId: number, secret: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const db = getDatabase()
+  return new Promise(async (resolve, reject) => {
+    const db = await getDatabase()
     db.run("UPDATE users SET temp_two_factor_secret = ? WHERE id = ?", [secret, userId], (err) => {
       if (err) {
         reject(err)
       } else {
         resolve()
       }
+      db.close()
     })
   })
 }
@@ -294,8 +312,8 @@ export async function createPassword(
   notes?: string,
   category = "other",
 ): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const db = getDatabase()
+  return new Promise(async (resolve, reject) => {
+    const db = await getDatabase()
     db.run(
       "INSERT INTO passwords (id, user_id, title, username, encrypted_password, url, category, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       [
@@ -316,33 +334,36 @@ export async function createPassword(
         } else {
           resolve(this.lastID)
         }
+        db.close()
       },
     )
   })
 }
 
 export async function getPasswordsByUserId(userId: number): Promise<any[]> {
-  return new Promise((resolve, reject) => {
-    const db = getDatabase()
+  return new Promise(async (resolve, reject) => {
+    const db = await getDatabase()
     db.all("SELECT * FROM passwords WHERE user_id = ? ORDER BY updated_at DESC", [userId], (err, rows) => {
       if (err) {
         reject(err)
       } else {
-        resolve(rows)
+        resolve(rows || [])
       }
+      db.close()
     })
   })
 }
 
 export async function getPasswordById(id: string, userId: number): Promise<any | null> {
-  return new Promise((resolve, reject) => {
-    const db = getDatabase()
+  return new Promise(async (resolve, reject) => {
+    const db = await getDatabase()
     db.get("SELECT * FROM passwords WHERE id = ? AND user_id = ?", [id, userId], (err, row) => {
       if (err) {
         reject(err)
       } else {
         resolve(row)
       }
+      db.close()
     })
   })
 }
@@ -357,8 +378,8 @@ export async function updatePassword(
   notes?: string,
   category = "other",
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const db = getDatabase()
+  return new Promise(async (resolve, reject) => {
+    const db = await getDatabase()
     db.run(
       "UPDATE passwords SET title = ?, username = ?, encrypted_password = ?, url = ?, category = ?, notes = ?, updated_at = ? WHERE id = ? AND user_id = ?",
       [title, username, encryptedPassword, url, category, notes, new Date().toISOString(), id, userId],
@@ -368,28 +389,30 @@ export async function updatePassword(
         } else {
           resolve()
         }
+        db.close()
       },
     )
   })
 }
 
 export async function deletePassword(id: string, userId: number): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const db = getDatabase()
+  return new Promise(async (resolve, reject) => {
+    const db = await getDatabase()
     db.run("DELETE FROM passwords WHERE id = ? AND user_id = ?", [id, userId], (err) => {
       if (err) {
         reject(err)
       } else {
         resolve()
       }
+      db.close()
     })
   })
 }
 
 // Session operations
 export async function createSession(userId: number, token: string, expiresAt: Date): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const db = getDatabase()
+  return new Promise(async (resolve, reject) => {
+    const db = await getDatabase()
     db.run(
       "INSERT INTO sessions (id, user_id, token, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
       [uuidv4(), userId, token, expiresAt.toISOString(), new Date().toISOString()],
@@ -399,14 +422,15 @@ export async function createSession(userId: number, token: string, expiresAt: Da
         } else {
           resolve(this.lastID)
         }
+        db.close()
       },
     )
   })
 }
 
 export async function getSessionByToken(token: string): Promise<any | null> {
-  return new Promise((resolve, reject) => {
-    const db = getDatabase()
+  return new Promise(async (resolve, reject) => {
+    const db = await getDatabase()
     const now = new Date()
     db.get("SELECT * FROM sessions WHERE token = ? AND expires_at > ?", [token, now.toISOString()], (err, row) => {
       if (err) {
@@ -414,26 +438,28 @@ export async function getSessionByToken(token: string): Promise<any | null> {
       } else {
         resolve(row)
       }
+      db.close()
     })
   })
 }
 
 export async function deleteSession(token: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const db = getDatabase()
+  return new Promise(async (resolve, reject) => {
+    const db = await getDatabase()
     db.run("DELETE FROM sessions WHERE token = ?", [token], (err) => {
       if (err) {
         reject(err)
       } else {
         resolve()
       }
+      db.close()
     })
   })
 }
 
 export async function deleteExpiredSessions(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const db = getDatabase()
+  return new Promise(async (resolve, reject) => {
+    const db = await getDatabase()
     const now = new Date()
     db.run("DELETE FROM sessions WHERE expires_at <= ?", [now.toISOString()], (err) => {
       if (err) {
@@ -441,6 +467,7 @@ export async function deleteExpiredSessions(): Promise<void> {
       } else {
         resolve()
       }
+      db.close()
     })
   })
 }
@@ -451,4 +478,58 @@ export async function closeDatabase() {
     db.close()
     db = null
   }
+}
+
+export function runQuery(query: string, params: any[] = []): Promise<any> {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const db = await getDatabase()
+      db.run(query, params, function (err) {
+        if (err) {
+          reject(err)
+        } else {
+          resolve({ lastID: this.lastID, changes: this.changes })
+        }
+        db.close()
+      })
+    } catch (error) {
+      reject(error)
+    }
+  })
+}
+
+export function getQuery(query: string, params: any[] = []): Promise<any> {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const db = await getDatabase()
+      db.get(query, params, (err, row) => {
+        if (err) {
+          reject(err)
+        } else {
+          resolve(row)
+        }
+        db.close()
+      })
+    } catch (error) {
+      reject(error)
+    }
+  })
+}
+
+export function getAllQuery(query: string, params: any[] = []): Promise<any[]> {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const db = await getDatabase()
+      db.all(query, params, (err, rows) => {
+        if (err) {
+          reject(err)
+        } else {
+          resolve(rows || [])
+        }
+        db.close()
+      })
+    } catch (error) {
+      reject(error)
+    }
+  })
 }

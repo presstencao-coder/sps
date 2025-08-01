@@ -1,11 +1,11 @@
 -- Criar tabela de usuários
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL,
-    two_factor_secret TEXT,
+    name TEXT,
     two_factor_enabled INTEGER DEFAULT 0,
+    two_factor_secret TEXT,
     temp_two_factor_secret TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -26,5 +26,5 @@ CREATE TABLE IF NOT EXISTS passwords (
 );
 
 -- Criar índices para melhor performance
-CREATE INDEX IF NOT EXISTS idx_passwords_user_id ON passwords(user_id);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_passwords_user_id ON passwords(user_id);

@@ -31,7 +31,7 @@ interface PasswordEntry {
   updatedAt: string
 }
 
-export function PasswordManager() {
+export default function PasswordManager() {
   const [passwords, setPasswords] = useState<PasswordEntry[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("all")

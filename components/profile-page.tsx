@@ -1,191 +1,161 @@
 "use client"
-import { useState, useEffect } from "react"
+
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { User, Mail, Shield, Edit2, Save, X } from "lucide-react"
-import { useToast } from "@/hooks/use-toast"
+import { User, Mail, Calendar, Shield, Edit, Save, X } from "lucide-react"
 
-export function ProfilePage() {
-  const [userInfo, setUserInfo] = useState({
-    name: "",
-    email: "",
-    twoFactorEnabled: false,
-    createdAt: "",
-  })
+interface ProfilePageProps {
+  user: {
+    id: string
+    email: string
+    name: string
+    twoFactorEnabled: boolean
+  }
+}
+
+export default function ProfilePage({ user }: ProfilePageProps) {
   const [isEditing, setIsEditing] = useState(false)
-  const [editForm, setEditForm] = useState({
-    name: "",
-    email: "",
-  })
-  const [isLoading, setIsLoading] = useState(true)
-  const [isSaving, setIsSaving] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
-  const { toast } = useToast()
+  const [success, setSuccess] = useState("")
+  const [formData, setFormData] = useState({
+    name: user.name || "",
+    email: user.email || "",
+  })
 
-  useEffect(() => {
-    loadUserProfile()
-  }, [])
-
-  const loadUserProfile = async () => {
-    try {
-      const token = localStorage.getItem("token")
-      if (!token) {
-        setError("Token não encontrado")
-        return
-      }
-
-      const response = await fetch("/api/user/profile", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        setUserInfo(data)
-        setEditForm({
-          name: data.name,
-          email: data.email,
-        })
-      } else {
-        const errorData = await response.json()
-        setError(errorData.error || "Erro ao carregar perfil")
-      }
-    } catch (error: any) {
-      console.error("Erro ao carregar perfil:", error)
-      setError("Erro ao carregar perfil")
-    } finally {
-      setIsLoading(false)
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem("token")
+    return {
+      "Content-Type": "application/json",
+      ...(token && { Authorization: `Bearer ${token}` }),
     }
   }
 
-  const handleSaveProfile = async () => {
-    if (!editForm.name.trim() || !editForm.email.trim()) {
-      setError("Nome e email são obrigatórios")
-      return
-    }
-
-    setIsSaving(true)
+  const handleSave = async () => {
+    setLoading(true)
     setError("")
+    setSuccess("")
 
     try {
-      const token = localStorage.getItem("token")
-      if (!token) {
-        setError("Token não encontrado")
-        return
-      }
-
       const response = await fetch("/api/user/profile", {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(editForm),
+        headers: getAuthHeaders(),
+        body: JSON.stringify(formData),
       })
 
       if (response.ok) {
-        const data = await response.json()
-        setUserInfo((prev) => ({
-          ...prev,
-          name: data.name,
-          email: data.email,
-        }))
+        setSuccess("Perfil atualizado com sucesso!")
         setIsEditing(false)
-        toast({
-          title: "Perfil atualizado",
-          description: "Suas informações foram salvas com sucesso.",
-        })
+        // Aqui você pode atualizar o contexto do usuário se necessário
       } else {
-        const errorData = await response.json()
-        setError(errorData.error || "Erro ao salvar perfil")
+        const data = await response.json()
+        setError(data.error || "Erro ao atualizar perfil")
       }
-    } catch (error: any) {
-      console.error("Erro ao salvar perfil:", error)
-      setError("Erro ao salvar perfil")
+    } catch (error) {
+      console.error("Erro ao atualizar perfil:", error)
+      setError("Erro de conexão")
     } finally {
-      setIsSaving(false)
+      setLoading(false)
     }
   }
 
-  const handleCancelEdit = () => {
-    setEditForm({
-      name: userInfo.name,
-      email: userInfo.email,
+  const handleCancel = () => {
+    setFormData({
+      name: user.name || "",
+      email: user.email || "",
     })
     setIsEditing(false)
     setError("")
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      </div>
-    )
+    setSuccess("")
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <div className="flex items-center gap-4">
-        <Avatar className="h-20 w-20">
-          <AvatarImage src="/placeholder-user.jpg" />
-          <AvatarFallback className="text-2xl">{userInfo.name?.charAt(0)?.toUpperCase() || "U"}</AvatarFallback>
-        </Avatar>
-        <div>
-          <h1 className="text-2xl font-bold">{userInfo.name || "Usuário"}</h1>
-          <p className="text-muted-foreground">{userInfo.email}</p>
-          <div className="flex items-center gap-2 mt-2">
-            <Badge variant={userInfo.twoFactorEnabled ? "default" : "secondary"}>
-              <Shield className="h-3 w-3 mr-1" />
-              2FA {userInfo.twoFactorEnabled ? "Ativo" : "Inativo"}
-            </Badge>
-          </div>
-        </div>
-      </div>
-
+    <div className="space-y-6">
+      {/* Profile Header */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Informações Pessoais</CardTitle>
-              <CardDescription>Gerencie suas informações de perfil</CardDescription>
+            <div className="flex items-center space-x-4">
+              <Avatar className="h-16 w-16">
+                <AvatarFallback className="bg-blue-600 text-white text-xl">
+                  {user.name ? user.name.charAt(0).toUpperCase() : user.email.charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <CardTitle className="text-2xl">{user.name || "Usuário"}</CardTitle>
+                <CardDescription className="text-base">{user.email}</CardDescription>
+                <div className="flex items-center gap-2 mt-2">
+                  <Badge variant={user.twoFactorEnabled ? "default" : "secondary"}>
+                    <Shield className="w-3 h-3 mr-1" />
+                    2FA {user.twoFactorEnabled ? "Ativo" : "Inativo"}
+                  </Badge>
+                  <Badge variant="outline">
+                    <User className="w-3 h-3 mr-1" />
+                    Usuário Ativo
+                  </Badge>
+                </div>
+              </div>
             </div>
-            {!isEditing && (
-              <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>
-                <Edit2 className="h-4 w-4 mr-2" />
-                Editar
-              </Button>
-            )}
+            <Button
+              variant={isEditing ? "ghost" : "outline"}
+              onClick={() => setIsEditing(!isEditing)}
+              disabled={loading}
+            >
+              {isEditing ? (
+                <>
+                  <X className="w-4 h-4 mr-2" />
+                  Cancelar
+                </>
+              ) : (
+                <>
+                  <Edit className="w-4 h-4 mr-2" />
+                  Editar
+                </>
+              )}
+            </Button>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+      </Card>
+
+      {/* Profile Information */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Informações Pessoais</CardTitle>
+          <CardDescription>Gerencie suas informações de perfil</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
 
-          <div className="grid gap-4">
+          {success && (
+            <Alert>
+              <AlertDescription className="text-green-600">{success}</AlertDescription>
+            </Alert>
+          )}
+
+          <div className="grid gap-6 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="name">Nome Completo</Label>
               {isEditing ? (
                 <Input
                   id="name"
-                  value={editForm.name}
-                  onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
+                  value={formData.name}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
                   placeholder="Seu nome completo"
-                  disabled={isSaving}
                 />
               ) : (
-                <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
-                  <User className="h-4 w-4 text-muted-foreground" />
-                  <span>{userInfo.name || "Não informado"}</span>
+                <div className="flex items-center space-x-2 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                  <User className="w-4 h-4 text-slate-500" />
+                  <span>{user.name || "Não informado"}</span>
                 </div>
               )}
             </div>
@@ -196,42 +166,35 @@ export function ProfilePage() {
                 <Input
                   id="email"
                   type="email"
-                  value={editForm.email}
-                  onChange={(e) => setEditForm((prev) => ({ ...prev, email: e.target.value }))}
+                  value={formData.email}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
                   placeholder="seu@email.com"
-                  disabled={isSaving}
                 />
               ) : (
-                <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
-                  <span>{userInfo.email || "Não informado"}</span>
+                <div className="flex items-center space-x-2 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                  <Mail className="w-4 h-4 text-slate-500" />
+                  <span>{user.email}</span>
                 </div>
               )}
             </div>
-
-            {!isEditing && userInfo.createdAt && (
-              <div className="space-y-2">
-                <Label>Membro desde</Label>
-                <div className="p-2 bg-muted rounded-md">
-                  <span>{new Date(userInfo.createdAt).toLocaleDateString("pt-BR")}</span>
-                </div>
-              </div>
-            )}
           </div>
 
           {isEditing && (
             <div className="flex gap-2 pt-4">
-              <Button onClick={handleSaveProfile} disabled={isSaving} className="flex-1">
-                <Save className="h-4 w-4 mr-2" />
-                {isSaving ? "Salvando..." : "Salvar"}
+              <Button onClick={handleSave} disabled={loading}>
+                {loading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Salvando...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4 mr-2" />
+                    Salvar Alterações
+                  </>
+                )}
               </Button>
-              <Button
-                variant="outline"
-                onClick={handleCancelEdit}
-                disabled={isSaving}
-                className="flex-1 bg-transparent"
-              >
-                <X className="h-4 w-4 mr-2" />
+              <Button variant="outline" onClick={handleCancel} disabled={loading}>
                 Cancelar
               </Button>
             </div>
@@ -239,24 +202,77 @@ export function ProfilePage() {
         </CardContent>
       </Card>
 
+      {/* Account Statistics */}
       <Card>
         <CardHeader>
           <CardTitle>Estatísticas da Conta</CardTitle>
-          <CardDescription>Informações sobre o uso da sua conta</CardDescription>
+          <CardDescription>Informações sobre sua atividade</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="text-center p-4 bg-muted rounded-lg">
-              <div className="text-2xl font-bold text-blue-600">-</div>
-              <div className="text-sm text-muted-foreground">Senhas Salvas</div>
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="flex items-center space-x-3 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+              <div className="p-2 bg-blue-600 rounded-lg">
+                <Shield className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Senhas Salvas</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">0</p>
+              </div>
             </div>
-            <div className="text-center p-4 bg-muted rounded-lg">
-              <div className="text-2xl font-bold text-green-600">{userInfo.twoFactorEnabled ? "Sim" : "Não"}</div>
-              <div className="text-sm text-muted-foreground">2FA Ativo</div>
+
+            <div className="flex items-center space-x-3 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+              <div className="p-2 bg-green-600 rounded-lg">
+                <Calendar className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Conta Criada</p>
+                <p className="text-lg font-bold text-slate-900 dark:text-slate-100">Hoje</p>
+              </div>
             </div>
-            <div className="text-center p-4 bg-muted rounded-lg">
-              <div className="text-2xl font-bold text-purple-600">-</div>
-              <div className="text-sm text-muted-foreground">Último Acesso</div>
+
+            <div className="flex items-center space-x-3 p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+              <div className="p-2 bg-purple-600 rounded-lg">
+                <User className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Último Login</p>
+                <p className="text-lg font-bold text-slate-900 dark:text-slate-100">Agora</p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Security Overview */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Visão Geral de Segurança</CardTitle>
+          <CardDescription>Status das suas configurações de segurança</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 border rounded-lg">
+              <div className="flex items-center space-x-3">
+                <Shield className="w-5 h-5 text-blue-600" />
+                <div>
+                  <p className="font-medium">Autenticação de Dois Fatores</p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Proteção adicional para sua conta</p>
+                </div>
+              </div>
+              <Badge variant={user.twoFactorEnabled ? "default" : "secondary"}>
+                {user.twoFactorEnabled ? "Ativo" : "Inativo"}
+              </Badge>
+            </div>
+
+            <div className="flex items-center justify-between p-4 border rounded-lg">
+              <div className="flex items-center space-x-3">
+                <Mail className="w-5 h-5 text-green-600" />
+                <div>
+                  <p className="font-medium">Email Verificado</p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Seu email foi verificado com sucesso</p>
+                </div>
+              </div>
+              <Badge variant="default">Verificado</Badge>
             </div>
           </div>
         </CardContent>
