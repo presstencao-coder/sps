@@ -1,13 +1,15 @@
 "use client"
 
 import type React from "react"
+
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Eye, EyeOff, Shield, ArrowLeft } from "lucide-react"
+import { Eye, EyeOff, Lock, Mail, User, Shield } from "lucide-react"
+import { toast } from "sonner"
 
 interface RegisterFormProps {
   onRegisterSuccess: (userData: any) => void
@@ -15,209 +17,199 @@ interface RegisterFormProps {
 }
 
 export function RegisterForm({ onRegisterSuccess, onSwitchToLogin }: RegisterFormProps) {
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    password: "",
-    confirmPassword: "",
-  })
+  const [name, setName] = useState("")
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }))
-  }
-
-  const validateForm = () => {
-    if (!formData.name.trim()) {
-      setError("Nome é obrigatório")
-      return false
-    }
-    if (!formData.email.trim()) {
-      setError("Email é obrigatório")
-      return false
-    }
-    if (formData.password.length < 6) {
-      setError("Senha deve ter pelo menos 6 caracteres")
-      return false
-    }
-    if (formData.password !== formData.confirmPassword) {
-      setError("Senhas não coincidem")
-      return false
-    }
-    return true
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setLoading(true)
     setError("")
 
-    if (!validateForm()) {
+    if (password !== confirmPassword) {
+      setError("As senhas não coincidem")
+      setLoading(false)
       return
     }
 
-    setIsLoading(true)
+    if (password.length < 6) {
+      setError("A senha deve ter pelo menos 6 caracteres")
+      setLoading(false)
+      return
+    }
 
     try {
-      console.log("=== INICIANDO REGISTRO ===")
-      console.log("Dados:", { name: formData.name, email: formData.email })
-
       const response = await fetch("/api/auth/register", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          name: formData.name,
-          email: formData.email,
-          password: formData.password,
-        }),
+        body: JSON.stringify({ name, email, password }),
       })
 
-      console.log("Response status:", response.status)
-
-      const contentType = response.headers.get("content-type")
-      if (!contentType || !contentType.includes("application/json")) {
-        const textResponse = await response.text()
-        console.error("Resposta não é JSON:", textResponse)
-        throw new Error("Servidor retornou resposta inválida")
-      }
-
       const data = await response.json()
-      console.log("Response data:", data)
 
-      if (response.ok && data.success) {
-        console.log("Registro bem-sucedido")
+      if (response.ok) {
+        toast.success("Conta criada com sucesso!")
         onRegisterSuccess(data)
       } else {
-        console.error("Registro falhou:", data.error)
         setError(data.error || "Erro ao criar conta")
+        toast.error(data.error || "Erro ao criar conta")
       }
-    } catch (error: any) {
-      console.error("=== ERRO NO REGISTRO ===", error)
-      setError(error.message || "Erro desconhecido")
+    } catch (error) {
+      const errorMessage = "Erro de conexão. Tente novamente."
+      setError(errorMessage)
+      toast.error(errorMessage)
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900">
-            <Shield className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+      <Card className="w-full max-w-md shadow-xl border-0 bg-white/80 backdrop-blur-sm">
+        <CardHeader className="space-y-1 text-center">
+          <div className="flex justify-center mb-4">
+            <div className="p-3 bg-indigo-600 rounded-full">
+              <Shield className="h-8 w-8 text-white" />
+            </div>
           </div>
-          <CardTitle className="text-2xl">Criar Conta</CardTitle>
-          <CardDescription>Crie sua conta no SecureVault</CardDescription>
+          <CardTitle className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+            Criar Conta
+          </CardTitle>
+          <CardDescription className="text-gray-600">Crie sua conta para começar a usar o gerenciador</CardDescription>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Nome Completo</Label>
-              <Input
-                id="name"
-                name="name"
-                type="text"
-                value={formData.name}
-                onChange={handleInputChange}
-                placeholder="Seu nome completo"
-                required
-                disabled={isLoading}
-              />
-            </div>
+
+        <form onSubmit={handleSubmit}>
+          <CardContent className="space-y-4">
+            {error && (
+              <Alert className="border-red-200 bg-red-50">
+                <AlertDescription className="text-red-700">{error}</AlertDescription>
+              </Alert>
+            )}
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                name="email"
-                type="email"
-                value={formData.email}
-                onChange={handleInputChange}
-                placeholder="seu@email.com"
-                required
-                disabled={isLoading}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="password">Senha</Label>
+              <Label htmlFor="name" className="text-sm font-medium text-gray-700">
+                Nome Completo
+              </Label>
               <div className="relative">
+                <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Input
+                  id="name"
+                  type="text"
+                  placeholder="Seu nome completo"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="pl-10 border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="email" className="text-sm font-medium text-gray-700">
+                Email
+              </Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="seu@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="pl-10 border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="password" className="text-sm font-medium text-gray-700">
+                Senha
+              </Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                 <Input
                   id="password"
-                  name="password"
                   type={showPassword ? "text" : "password"}
-                  value={formData.password}
-                  onChange={handleInputChange}
-                  placeholder="Sua senha (mín. 6 caracteres)"
+                  placeholder="Mínimo 6 caracteres"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="pl-10 pr-10 border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
                   required
-                  disabled={isLoading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                  disabled={isLoading}
+                  className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
                 >
-                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirmar Senha</Label>
+              <Label htmlFor="confirmPassword" className="text-sm font-medium text-gray-700">
+                Confirmar Senha
+              </Label>
               <div className="relative">
+                <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                 <Input
                   id="confirmPassword"
-                  name="confirmPassword"
                   type={showConfirmPassword ? "text" : "password"}
-                  value={formData.confirmPassword}
-                  onChange={handleInputChange}
                   placeholder="Confirme sua senha"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="pl-10 pr-10 border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
                   required
-                  disabled={isLoading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                  disabled={isLoading}
+                  className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
                 >
-                  {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
             </div>
+          </CardContent>
 
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? "Criando conta..." : "Criar Conta"}
+          <CardFooter className="flex flex-col space-y-4">
+            <Button
+              type="submit"
+              className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 transform hover:scale-105"
+              disabled={loading}
+            >
+              {loading ? (
+                <div className="flex items-center space-x-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  <span>Criando conta...</span>
+                </div>
+              ) : (
+                "Criar Conta"
+              )}
             </Button>
 
             <div className="text-center">
-              <button
-                type="button"
-                onClick={onSwitchToLogin}
-                className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 underline"
-                disabled={isLoading}
-              >
-                <ArrowLeft size={16} />
-                Voltar para o login
-              </button>
+              <p className="text-sm text-gray-600">
+                Já tem uma conta?{" "}
+                <button
+                  type="button"
+                  onClick={onSwitchToLogin}
+                  className="text-indigo-600 hover:text-indigo-700 font-medium hover:underline"
+                >
+                  Faça login
+                </button>
+              </p>
             </div>
-          </form>
-        </CardContent>
+          </CardFooter>
+        </form>
       </Card>
     </div>
   )
