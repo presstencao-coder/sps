@@ -1,97 +1,81 @@
 import { type NextRequest, NextResponse } from "next/server"
 import jwt from "jsonwebtoken"
 import { authenticator } from "otplib"
-import { getUserById, updateUser2FA } from "@/lib/database"
+import { getDatabase } from "@/lib/database"
 
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"
 
 export async function POST(request: NextRequest) {
   try {
-    console.log("=== 2FA VERIFY API CHAMADA ===")
-
-    // Get token from Authorization header
     const authHeader = request.headers.get("authorization")
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Token de autorização necessário" }, { status: 401 })
+      return NextResponse.json({ error: "Token não fornecido" }, { status: 401 })
     }
 
-    const authToken = authHeader.substring(7)
+    const token = authHeader.substring(7)
     let decoded: any
 
     try {
-      decoded = jwt.verify(authToken, JWT_SECRET)
-      console.log("Token decodificado:", { userId: decoded.userId, email: decoded.email })
+      decoded = jwt.verify(token, JWT_SECRET)
     } catch (error) {
-      console.error("Token inválido:", error)
-      return NextResponse.json({ error: "Token inválido ou expirado" }, { status: 401 })
+      return NextResponse.json({ error: "Token inválido" }, { status: 401 })
     }
 
-    // Get request body
-    const body = await request.json()
-    const { token } = body
-
-    if (!token || token.length !== 6) {
-      return NextResponse.json({ error: "Código de 6 dígitos é obrigatório" }, { status: 400 })
+    const { code } = await request.json()
+    if (!code || code.length !== 6) {
+      return NextResponse.json({ error: "Código de verificação inválido" }, { status: 400 })
     }
 
-    console.log("Verificando código:", token)
+    const userId = decoded.userId
+    const db = getDatabase()
 
-    // Get user from database
-    const user = await getUserById(decoded.userId)
-    if (!user) {
-      return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 })
+    // Buscar usuário e secret temporário
+    const user = db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any
+    if (!user || !user.temp_two_factor_secret) {
+      return NextResponse.json({ error: "Secret 2FA não encontrado" }, { status: 400 })
     }
 
-    if (!user.two_factor_secret) {
-      return NextResponse.json({ error: "2FA não configurado" }, { status: 400 })
-    }
-
-    // Verify the token
+    // Verificar código
     const isValid = authenticator.verify({
-      token,
-      secret: user.two_factor_secret,
+      token: code,
+      secret: user.temp_two_factor_secret,
+      window: 2, // Permite uma janela de tempo maior
     })
 
-    console.log("Código válido:", isValid)
-
     if (!isValid) {
-      return NextResponse.json({ error: "Código inválido ou expirado" }, { status: 400 })
+      return NextResponse.json({ error: "Código de verificação inválido" }, { status: 400 })
     }
 
-    // Enable 2FA for the user
-    await updateUser2FA(user.id, user.two_factor_secret, true)
-    console.log("2FA habilitado para usuário:", user.email)
+    // Ativar 2FA permanentemente
+    db.prepare(`
+      UPDATE users 
+      SET two_factor_secret = ?, 
+          two_factor_enabled = 1, 
+          temp_two_factor_secret = NULL 
+      WHERE id = ?
+    `).run(user.temp_two_factor_secret, userId)
 
-    // Generate new token with 2FA verified
-    const newToken = jwt.sign(
+    // Gerar token final
+    const finalToken = jwt.sign(
       {
         userId: user.id,
         email: user.email,
-        name: user.name,
         twoFactorVerified: true,
       },
       JWT_SECRET,
-      { expiresIn: "24h" },
+      { expiresIn: "7d" },
     )
 
+    // Buscar dados atualizados do usuário
+    const updatedUser = db.prepare("SELECT id, name, email, two_factor_enabled FROM users WHERE id = ?").get(userId)
+
     return NextResponse.json({
-      success: true,
-      token: newToken,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        twoFactorEnabled: true,
-      },
+      token: finalToken,
+      user: updatedUser,
+      message: "2FA configurado com sucesso",
     })
   } catch (error) {
-    console.error("=== ERRO NA VERIFICAÇÃO 2FA ===", error)
-    return NextResponse.json(
-      {
-        error: "Erro interno do servidor",
-        details: error instanceof Error ? error.message : "Erro desconhecido",
-      },
-      { status: 500 },
-    )
+    console.error("2FA verify error:", error)
+    return NextResponse.json({ error: "Erro interno do servidor" }, { status: 500 })
   }
 }

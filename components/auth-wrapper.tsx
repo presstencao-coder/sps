@@ -4,34 +4,37 @@ import { useState, useEffect } from "react"
 import { LoginForm } from "./login-form"
 import { RegisterForm } from "./register-form"
 import { TwoFactorAuth } from "./two-factor-auth"
-import { MainLayout } from "./main-layout"
+import MainLayout from "./main-layout"
+import { PasswordManager } from "./password-manager"
+import { ProfilePage } from "./profile-page"
+import { SettingsPage } from "./settings-page"
+import { toast } from "sonner"
+
+type AuthState = "login" | "register" | "2fa" | "authenticated"
+type Page = "passwords" | "profile" | "settings"
 
 interface User {
-  id: string
+  id: number
   name: string
   email: string
   twoFactorEnabled: boolean
 }
 
 export function AuthWrapper() {
+  const [authState, setAuthState] = useState<AuthState>("login")
+  const [currentPage, setCurrentPage] = useState<Page>("passwords")
   const [user, setUser] = useState<User | null>(null)
-  const [showRegister, setShowRegister] = useState(false)
-  const [showTwoFactor, setShowTwoFactor] = useState(false)
-  const [tempUser, setTempUser] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
+  const [tempToken, setTempToken] = useState<string | null>(null)
 
   useEffect(() => {
-    checkAuthStatus()
+    const token = localStorage.getItem("token")
+    if (token) {
+      validateToken(token)
+    }
   }, [])
 
-  const checkAuthStatus = async () => {
+  const validateToken = async (token: string) => {
     try {
-      const token = localStorage.getItem("token")
-      if (!token) {
-        setLoading(false)
-        return
-      }
-
       const response = await fetch("/api/user/profile", {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -41,75 +44,79 @@ export function AuthWrapper() {
       if (response.ok) {
         const userData = await response.json()
         setUser(userData)
+        setAuthState("authenticated")
       } else {
         localStorage.removeItem("token")
+        setAuthState("login")
       }
     } catch (error) {
-      console.error("Erro ao verificar autenticação:", error)
+      console.error("Token validation error:", error)
       localStorage.removeItem("token")
-    } finally {
-      setLoading(false)
+      setAuthState("login")
     }
   }
 
-  const handleLoginSuccess = (userData: any) => {
-    if (userData.requiresTwoFactor) {
-      setTempUser(userData)
-      setShowTwoFactor(true)
+  const handleLoginSuccess = (token: string, requiresTwoFactor: boolean, userData?: User) => {
+    if (requiresTwoFactor) {
+      setTempToken(token)
+      setAuthState("2fa")
     } else {
-      localStorage.setItem("token", userData.token)
-      setUser(userData.user)
+      localStorage.setItem("token", token)
+      if (userData) {
+        setUser(userData)
+      }
+      setAuthState("authenticated")
+      toast.success("Login realizado com sucesso!")
     }
   }
 
-  const handleRegisterSuccess = (userData: any) => {
-    localStorage.setItem("token", userData.token)
-    setUser(userData.user)
-    setShowRegister(false)
+  const handleRegisterSuccess = () => {
+    setAuthState("login")
+    toast.success("Conta criada com sucesso! Faça login para continuar.")
   }
 
-  const handleTwoFactorSuccess = (userData: any) => {
-    localStorage.setItem("token", userData.token)
-    setUser(userData.user)
-    setShowTwoFactor(false)
-    setTempUser(null)
+  const handle2FASuccess = (token: string, userData: User) => {
+    localStorage.setItem("token", token)
+    setUser(userData)
+    setTempToken(null)
+    setAuthState("authenticated")
+    toast.success("Autenticação de dois fatores concluída!")
   }
 
   const handleLogout = () => {
     localStorage.removeItem("token")
     setUser(null)
-    setShowTwoFactor(false)
-    setTempUser(null)
+    setTempToken(null)
+    setAuthState("login")
+    setCurrentPage("passwords")
+    toast.success("Logout realizado com sucesso!")
   }
 
-  if (loading) {
+  const handleUserUpdate = (updatedUser: User) => {
+    setUser(updatedUser)
+  }
+
+  if (authState === "login") {
+    return <LoginForm onLoginSuccess={handleLoginSuccess} onSwitchToRegister={() => setAuthState("register")} />
+  }
+
+  if (authState === "register") {
+    return <RegisterForm onRegisterSuccess={handleRegisterSuccess} onSwitchToLogin={() => setAuthState("login")} />
+  }
+
+  if (authState === "2fa") {
+    return <TwoFactorAuth tempToken={tempToken} onSuccess={handle2FASuccess} onBack={() => setAuthState("login")} />
+  }
+
+  if (authState === "authenticated" && user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-indigo-600"></div>
-      </div>
+      <MainLayout currentPage={currentPage} onPageChange={setCurrentPage} onLogout={handleLogout} userInfo={user}>
+        {currentPage === "passwords" && <PasswordManager />}
+        {currentPage === "profile" && <ProfilePage user={user} onUserUpdate={handleUserUpdate} />}
+        {currentPage === "settings" && <SettingsPage user={user} onUserUpdate={handleUserUpdate} />}
+      </MainLayout>
     )
   }
 
-  if (user) {
-    return <MainLayout user={user} onLogout={handleLogout} />
-  }
-
-  if (showTwoFactor) {
-    return (
-      <TwoFactorAuth
-        tempUser={tempUser}
-        onSuccess={handleTwoFactorSuccess}
-        onBack={() => {
-          setShowTwoFactor(false)
-          setTempUser(null)
-        }}
-      />
-    )
-  }
-
-  if (showRegister) {
-    return <RegisterForm onRegisterSuccess={handleRegisterSuccess} onSwitchToLogin={() => setShowRegister(false)} />
-  }
-
-  return <LoginForm onLoginSuccess={handleLoginSuccess} onSwitchToRegister={() => setShowRegister(true)} />
+  return null
 }
