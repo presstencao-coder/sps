@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { authenticator } from "otplib"
 import QRCode from "qrcode"
+import { getUserByEmail, updateUser2FA } from "@/lib/database"
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,8 +11,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Email é obrigatório" }, { status: 400 })
     }
 
+    // Buscar usuário no banco
+    const user = await getUserByEmail(email)
+    if (!user) {
+      return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 })
+    }
+
     // Gerar secret para 2FA
     const secret = authenticator.generateSecret()
+
+    // Salvar o secret no banco de dados
+    await updateUser2FA(user.id, secret, false)
 
     // Criar URL para o QR Code
     const otpauth = authenticator.keyuri(email, "SecureVault", secret)

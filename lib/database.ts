@@ -2,6 +2,7 @@ import sqlite3 from "sqlite3"
 import { open, type Database } from "sqlite"
 import path from "path"
 import fs from "fs"
+import { hashPassword } from "./encryption"
 
 let db: Database | null = null
 
@@ -46,19 +47,15 @@ export async function getDatabase(): Promise<Database> {
         break
 
       case "postgres":
-        // Implementar conexão PostgreSQL
         throw new Error("PostgreSQL será implementado em breve")
 
       case "mysql":
-        // Implementar conexão MySQL
         throw new Error("MySQL será implementado em breve")
 
       case "mongodb":
-        // Implementar conexão MongoDB
         throw new Error("MongoDB será implementado em breve")
 
       case "sqlserver":
-        // Implementar conexão SQL Server
         throw new Error("SQL Server será implementado em breve")
 
       default:
@@ -84,6 +81,7 @@ async function initializeDatabase() {
         email TEXT UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
         two_factor_secret TEXT,
+        two_factor_enabled BOOLEAN DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
@@ -106,12 +104,26 @@ async function initializeDatabase() {
       )
     `)
 
+    // Create sessions table
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        token TEXT UNIQUE NOT NULL,
+        expires_at DATETIME NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+      )
+    `)
+
     // Create indexes
     await db.exec(`
       CREATE INDEX IF NOT EXISTS idx_passwords_user_id ON passwords(user_id);
       CREATE INDEX IF NOT EXISTS idx_passwords_category ON passwords(category);
       CREATE INDEX IF NOT EXISTS idx_passwords_title ON passwords(title);
       CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+      CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
+      CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
     `)
 
     // Check if admin user exists
@@ -119,17 +131,14 @@ async function initializeDatabase() {
 
     if (!existingUser) {
       // Insert admin user (password: admin123)
+      const adminPasswordHash = hashPassword("admin123")
+
       await db.run(
         `
-        INSERT INTO users (id, name, email, password_hash, created_at, updated_at) 
-        VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
+        INSERT INTO users (id, name, email, password_hash, two_factor_enabled, created_at, updated_at) 
+        VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
       `,
-        [
-          "user-1",
-          "Administrador",
-          "admin@example.com",
-          "$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi",
-        ],
+        ["user-1", "Administrador", "admin@example.com", adminPasswordHash, 0],
       )
 
       // Insert sample passwords
@@ -184,6 +193,118 @@ async function initializeDatabase() {
     console.error("❌ Erro ao inicializar banco:", error)
     throw error
   }
+}
+
+// User operations
+export async function createUser(name: string, email: string, passwordHash: string): Promise<string> {
+  const database = await getDatabase()
+  const userId = `user-${Date.now()}`
+
+  await database.run(
+    "INSERT INTO users (id, name, email, password_hash, two_factor_enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))",
+    [userId, name, email, passwordHash, 0],
+  )
+
+  return userId
+}
+
+export async function getUserByEmail(email: string) {
+  const database = await getDatabase()
+  return await database.get("SELECT * FROM users WHERE email = ?", [email])
+}
+
+export async function getUserById(id: string) {
+  const database = await getDatabase()
+  return await database.get("SELECT * FROM users WHERE id = ?", [id])
+}
+
+export async function updateUser2FA(userId: string, secret: string, enabled: boolean) {
+  const database = await getDatabase()
+  return await database.run(
+    "UPDATE users SET two_factor_secret = ?, two_factor_enabled = ?, updated_at = datetime('now') WHERE id = ?",
+    [secret, enabled ? 1 : 0, userId],
+  )
+}
+
+// Password operations
+export async function createPassword(
+  userId: string,
+  title: string,
+  username: string,
+  encryptedPassword: string,
+  url?: string,
+  notes?: string,
+  category = "other",
+): Promise<string> {
+  const database = await getDatabase()
+  const passwordId = `pass-${Date.now()}`
+
+  await database.run(
+    "INSERT INTO passwords (id, user_id, title, username, encrypted_password, url, category, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))",
+    [passwordId, userId, title, username, encryptedPassword, url || null, category, notes || null],
+  )
+
+  return passwordId
+}
+
+export async function getPasswordsByUserId(userId: string) {
+  const database = await getDatabase()
+  return await database.all("SELECT * FROM passwords WHERE user_id = ? ORDER BY created_at DESC", [userId])
+}
+
+export async function getPasswordById(id: string, userId: string) {
+  const database = await getDatabase()
+  return await database.get("SELECT * FROM passwords WHERE id = ? AND user_id = ?", [id, userId])
+}
+
+export async function updatePassword(
+  id: string,
+  userId: string,
+  title: string,
+  username: string,
+  encryptedPassword: string,
+  url?: string,
+  notes?: string,
+  category = "other",
+) {
+  const database = await getDatabase()
+  return await database.run(
+    "UPDATE passwords SET title = ?, username = ?, encrypted_password = ?, url = ?, category = ?, notes = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?",
+    [title, username, encryptedPassword, url || null, category, notes || null, id, userId],
+  )
+}
+
+export async function deletePassword(id: string, userId: string) {
+  const database = await getDatabase()
+  return await database.run("DELETE FROM passwords WHERE id = ? AND user_id = ?", [id, userId])
+}
+
+// Session operations
+export async function createSession(userId: string, token: string, expiresAt: Date): Promise<string> {
+  const database = await getDatabase()
+  const sessionId = `session-${Date.now()}`
+
+  await database.run(
+    "INSERT INTO sessions (id, user_id, token, expires_at, created_at) VALUES (?, ?, ?, ?, datetime('now'))",
+    [sessionId, userId, token, expiresAt.toISOString()],
+  )
+
+  return sessionId
+}
+
+export async function getSessionByToken(token: string) {
+  const database = await getDatabase()
+  return await database.get("SELECT * FROM sessions WHERE token = ? AND expires_at > datetime('now')", [token])
+}
+
+export async function deleteSession(token: string) {
+  const database = await getDatabase()
+  return await database.run("DELETE FROM sessions WHERE token = ?", [token])
+}
+
+export async function deleteExpiredSessions() {
+  const database = await getDatabase()
+  return await database.run("DELETE FROM sessions WHERE expires_at <= datetime('now')")
 }
 
 export async function closeDatabase() {

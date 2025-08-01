@@ -1,7 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { compare } from "bcryptjs"
 import jwt from "jsonwebtoken"
-import { getDatabase } from "@/lib/database"
+import { getUserByEmail } from "@/lib/database"
+import { verifyPassword } from "@/lib/encryption"
+
+const JWT_SECRET = process.env.JWT_SECRET || "fallback-secret-key"
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,33 +13,38 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Email e senha são obrigatórios" }, { status: 400 })
     }
 
-    const db = await getDatabase()
-
-    // Buscar usuário
-    const user = await db.get("SELECT * FROM users WHERE email = ?", [email])
-
+    // Buscar usuário no banco
+    const user = await getUserByEmail(email)
     if (!user) {
-      return NextResponse.json({ error: "Usuário não encontrado" }, { status: 401 })
+      return NextResponse.json({ error: "Credenciais inválidas" }, { status: 401 })
     }
 
     // Verificar senha
-    const isValidPassword = await compare(password, user.password_hash)
-
-    if (!isValidPassword) {
-      return NextResponse.json({ error: "Senha inválida" }, { status: 401 })
+    const isPasswordValid = verifyPassword(password, user.password_hash)
+    if (!isPasswordValid) {
+      return NextResponse.json({ error: "Credenciais inválidas" }, { status: 401 })
     }
 
     // Gerar token JWT
-    const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET || "fallback-secret", {
-      expiresIn: "24h",
-    })
+    const token = jwt.sign(
+      {
+        userId: user.id,
+        email: user.email,
+        name: user.name,
+      },
+      JWT_SECRET,
+      { expiresIn: "24h" },
+    )
 
     return NextResponse.json({
+      success: true,
+      message: "Login realizado com sucesso",
       token,
       user: {
         id: user.id,
-        email: user.email,
         name: user.name,
+        email: user.email,
+        twoFactorEnabled: user.two_factor_enabled,
       },
     })
   } catch (error) {

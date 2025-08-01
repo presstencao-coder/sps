@@ -1,57 +1,43 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { hash } from "bcryptjs"
-import jwt from "jsonwebtoken"
-import { getDatabase } from "@/lib/database"
-import { v4 as uuidv4 } from "uuid"
+import { createUser, getUserByEmail } from "@/lib/database"
+import { hashPassword } from "@/lib/encryption"
 
 export async function POST(request: NextRequest) {
   try {
-    const { name, email, password } = await request.json()
+    const { name, email, password, confirmPassword } = await request.json()
 
-    if (!name || !email || !password) {
-      return NextResponse.json({ error: "Nome, email e senha são obrigatórios" }, { status: 400 })
+    // Validações
+    if (!name || !email || !password || !confirmPassword) {
+      return NextResponse.json({ error: "Todos os campos são obrigatórios" }, { status: 400 })
+    }
+
+    if (password !== confirmPassword) {
+      return NextResponse.json({ error: "As senhas não coincidem" }, { status: 400 })
     }
 
     if (password.length < 6) {
       return NextResponse.json({ error: "A senha deve ter pelo menos 6 caracteres" }, { status: 400 })
     }
 
-    const db = await getDatabase()
-
-    // Verificar se o usuário já existe
-    const existingUser = await db.get("SELECT * FROM users WHERE email = ?", [email])
-
+    // Verificar se o email já existe
+    const existingUser = await getUserByEmail(email)
     if (existingUser) {
       return NextResponse.json({ error: "Este email já está cadastrado" }, { status: 409 })
     }
 
-    // Criptografar a senha
-    const passwordHash = await hash(password, 12)
+    // Hash da senha
+    const passwordHash = hashPassword(password)
 
-    // Criar novo usuário
-    const userId = uuidv4()
-    const now = new Date().toISOString()
-
-    await db.run(
-      `INSERT INTO users (id, name, email, password_hash, created_at, updated_at) 
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [userId, name, email, passwordHash, now, now],
-    )
-
-    // Gerar token JWT
-    const token = jwt.sign({ userId, email, name }, process.env.JWT_SECRET || "fallback-secret", { expiresIn: "24h" })
+    // Criar usuário
+    const userId = await createUser(name, email, passwordHash)
 
     return NextResponse.json({
-      token,
-      user: {
-        id: userId,
-        name,
-        email,
-      },
-      message: "Conta criada com sucesso!",
+      success: true,
+      message: "Usuário criado com sucesso",
+      userId,
     })
   } catch (error) {
-    console.error("Erro ao criar usuário:", error)
+    console.error("Erro no registro:", error)
     return NextResponse.json({ error: "Erro interno do servidor" }, { status: 500 })
   }
 }
